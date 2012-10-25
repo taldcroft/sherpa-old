@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # 
 #  Copyright (C) 2011  Smithsonian Astrophysical Observatory
 #
@@ -534,6 +533,9 @@ def get_table_data( arg, ncols=1, colkeys=None, make_copy=True, fix_type=True,
         arg = get_filename_from_dmsyntax(arg)
         tbl = open_crate(arg)
         if not isinstance(tbl, pycrates.TABLECrate):
+            #######??????????????????????????????????######## dtn
+            close_crate_dataset( tbl.get_dataset() )
+            #######??????????????????????????????????######## dtn
             raise IOErr('badfile', arg, 'TABLECrate obj')
 
         filename = tbl.get_filename()
@@ -605,6 +607,9 @@ def get_image_data(arg, make_copy=True, fix_type=True):
         img = open_crate(arg)
 
         if not isinstance(img, pycrates.IMAGECrate):
+            #######??????????????????????????????????######## dtn
+            close_crate_dataset( img.get_dataset() )
+            #######??????????????????????????????????######## dtn
             raise IOErr('badfile', arg, "IMAGECrate obj")
 
         filename = arg
@@ -684,6 +689,9 @@ def get_arf_data(arg, make_copy=True):
     if type(arg) == str:
         arf = open_crate(arg)
         if not isinstance(arf, pycrates.TABLECrate):
+            #######??????????????????????????????????######## dtn
+            close_crate_dataset( arf.get_dataset() )
+            #######??????????????????????????????????######## dtn
             raise IOErr('badfile', arg, "ARFCrate obj")
         filename = arg
         close_dataset = True
@@ -750,16 +758,25 @@ def get_rmf_data(arg, make_copy=True):
     else:
         raise IOErr('badfile', arg, "RMFCrateDataset obj")
 
-    rmf = rmfdataset.get_crate('MATRIX')
+    # Open the response matrix by extension name, and try using
+    # some of the many, many ways people break the OGIP definition
+    # of the extension name for the response matrix.
+    rmf = _get_crate_by_blockname(rmfdataset, 'MATRIX')
 
     if rmf is None:
-        rmf = rmfdataset.get_crate('SPECRESP MATRIX')
+        rmf = _get_crate_by_blockname(rmfdataset, 'SPECRESP MATRIX')
 
     if rmf is None:
-        rmf = rmfdataset.get_crate('AXAF_RMF')
+        rmf = _get_crate_by_blockname(rmfdataset, 'AXAF_RMF')
 
     if rmf is None:
-        rmf = rmfdataset.get_crate(2)
+        rmf = _get_crate_by_blockname(rmfdataset, 'RSP_MATRIX')
+
+    if rmf is None:
+        try:
+            rmf = rmfdataset.get_crate(2)
+        except IndexError:
+            rmf = None
 
     if rmf is None or rmf.get_colnames() is None:
         raise IOErr('filenotfound', arg)
@@ -804,7 +821,7 @@ def get_rmf_data(arg, make_copy=True):
     #ebounds = None
     #if rmfdataset.get_current_crate() < rmfdataset.get_ncrates():
     #    ebounds = rmfdataset.get_crate(rmfdataset.get_current_crate() + 1)
-    ebounds = rmfdataset.get_crate('EBOUNDS')
+    ebounds = _get_crate_by_blockname(rmfdataset, 'EBOUNDS')
 
     if ebounds is None:
         ebounds = rmfdataset.get_crate(3)
@@ -893,7 +910,8 @@ def get_pha_data(arg, make_copy=True, use_background=False):
     else:
         raise IOErr('badfile', arg, "PHACrateDataset obj")
 
-    pha = phadataset.get_crate("SPECTRUM")
+    pha = _get_crate_by_blockname(phadataset, "SPECTRUM")
+
     if pha is None:
         pha = phadataset.get_crate(phadataset.get_current_crate())
         if (pha.get_key('HDUCLAS1').value == 'SPECTRUM' or

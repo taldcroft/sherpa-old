@@ -62,4 +62,4 @@ class test_models(SherpaTestCase):
                 self.assert_(out.dtype.type is SherpaFloat)
                 self.assertEqual(out.shape, x.shape)
 
-        self.assertEqual(count, 15)
+        self.assertEqual(count, 16)

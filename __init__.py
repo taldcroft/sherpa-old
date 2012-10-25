@@ -43,8 +43,8 @@ import sys
 
 __all__ = ('banner', 'get_include', 'test')
 
-__versionstr__ = '4.4.2'
-__version__ = 40402
+__versionstr__ = '4.5.1'
+__version__ = 40501
 
 class Formatter(logging.Formatter):
     def format(self, record):

@@ -28,7 +28,7 @@ import sherpa.astro.models._modelfcts
 __all__ = ('Atten', 'BBody', 'BBodyFreq', 'Beta1D', 'BPL1D', 'Dered', 'Edge',
            'LineBroad', 'Lorentz1D', 'NormBeta1D', 'Schechter',
            'Beta2D', 'DeVaucouleurs2D', 'HubbleReynolds', 'Lorentz2D',
-           'JDPileup', 'MultiResponseSumModel')
+           'JDPileup', 'MultiResponseSumModel', 'Sersic2D')
 
 
 class Atten(ArithmeticModel):
@@ -536,3 +536,40 @@ class JDPileup(ArithmeticModel):
 
 class MultiResponseSumModel(ArithmeticModel):
     pass
+
+class Sersic2D(ArithmeticModel):
+
+    def __init__(self, name='sersic2d'):
+        self.r0 = Parameter(name, 'r0', 10, 0, hard_min=0)
+        self.xpos = Parameter(name, 'xpos', 0)
+        self.ypos = Parameter(name, 'ypos', 0)
+        self.ellip = Parameter(name, 'ellip', 0, 0, 0.999, 0, 0.9999)
+        self.theta = Parameter(name, 'theta', 0, 0, 2*numpy.pi, -2*numpy.pi,
+                               4*numpy.pi, 'radians')
+        self.ampl = Parameter(name, 'ampl', 1)
+        self.n = Parameter(name,'n', 1, .1, 10, 0.01, 100, frozen=True )
+        ArithmeticModel.__init__(self, name,
+                                 (self.r0, self.xpos, self.ypos, self.ellip,
+                                  self.theta, self.ampl, self.n))
+        self.cache = 0
+
+    def get_center(self):
+        return (self.xpos.val, self.ypos.val)
+
+    def set_center(self, xpos, ypos, *args, **kwargs):
+        self.xpos.set(xpos)
+        self.ypos.set(ypos)
+
+    def guess(self, dep, *args, **kwargs):
+        xpos, ypos = guess_position(dep, *args)
+        norm = guess_amplitude2d(dep, *args)
+        rad = guess_radius(*args)
+        param_apply_limits(xpos, self.xpos, **kwargs)
+        param_apply_limits(ypos, self.ypos, **kwargs)
+        param_apply_limits(norm, self.ampl, **kwargs)
+        param_apply_limits(rad, self.r0, **kwargs)
+
+
+    def calc(self, *args, **kwargs):
+        kwargs['integrate']=bool_cast(self.integrate)
+        return _modelfcts.sersic(*args, **kwargs)

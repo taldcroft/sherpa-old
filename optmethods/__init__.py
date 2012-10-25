@@ -319,11 +319,17 @@ class NelderMead(OptMethod):
     def __init__(self, name='simplex'):
 	OptMethod.__init__(self, name, neldermead)
 
+
 ###############################################################################
 
 ## import sherpa.optmethods.myoptfcts
 ## from sherpa.optmethods.fminpowell import *
 ## from sherpa.optmethods.nmpfit import *
+
+## from sherpa.optmethods.odrpack import odrpack
+## from sherpa.optmethods.stogo import stogo
+## from sherpa.optmethods.chokkan import chokkanlbfgs
+## from sherpa.optmethods.odr import odrf77
 
 ## def myall( targ, arg ):
 ##     fubar = list( targ )
@@ -331,6 +337,7 @@ class NelderMead(OptMethod):
 ##     return tuple( fubar )
 
 ## __all__ = myall( __all__, 'Bobyqa' )
+## __all__ = myall( __all__, 'Chokkan' )
 ## __all__ = myall( __all__, 'cppLevMar' )
 ## __all__ = myall( __all__, 'Dif_Evo' )
 ## __all__ = myall( __all__, 'MarLev' )
@@ -338,14 +345,20 @@ class NelderMead(OptMethod):
 ## __all__ = myall( __all__, 'Nelder_Mead' )
 ## __all__ = myall( __all__, 'NMPFIT' )        
 ## __all__ = myall( __all__, 'Newuoa' )
+## __all__ = myall( __all__, 'Odr' )
 ## __all__ = myall( __all__, 'OdrPack' )
 ## __all__ = myall( __all__, 'PortChi' )
 ## __all__ = myall( __all__, 'PortFct' )    
 ## __all__ = myall( __all__, 'ScipyPowell' )
+## __all__ = myall( __all__, 'StoGo' )
 
 ## class Bobyqa(OptMethod):
 ##     def __init__(self, name='bobyqa'):
 ##         OptMethod.__init__(self, name, myoptfcts.bobyqa)
+
+## class Chokkan(OptMethod):
+##     def __init__(self, name='chokkan'):
+##         OptMethod.__init__(self, name, chokkanlbfgs)
 
 ## class cppLevMar(OptMethod):
 
@@ -379,7 +392,11 @@ class NelderMead(OptMethod):
 
 ## class OdrPack(OptMethod):
 ##     def __init__(self, name='odrpack'):
-##         OptMethod.__init__(self, name, myoptfcts.odrpack)
+##         OptMethod.__init__(self, name, odrpack)
+
+## class Odr(OptMethod):
+##     def __init__(self, name='odr'):
+##         OptMethod.__init__(self, name, odrf77)
 
 ## class PortChi(OptMethod):
 ##     def __init__(self, name='dn2fb'):
@@ -392,5 +409,9 @@ class NelderMead(OptMethod):
 ## class ScipyPowell(OptMethod):
 ##     def __init__(self, name='scipypowell'):
 ##         OptMethod.__init__(self, name, my_fmin_powell)
+
+## class StoGo(OptMethod):
+##     def __init__(self, name='stogo'):
+## 	OptMethod.__init__(self, name, stogo)
         
 ###############################################################################

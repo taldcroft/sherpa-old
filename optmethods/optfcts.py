@@ -169,7 +169,7 @@ def _set_limits(x, xmin, xmax):
     return 0
 
 
-__all__ = ('grid_search', 'lmdif', 'minim', 'montecarlo', 'neldermead')
+__all__ = ('difevo', 'difevo_lm', 'difevo_nm', 'grid_search', 'lmdif', 'minim', 'montecarlo', 'neldermead')
 
 def difevo(fcn, x0, xmin, xmax, ftol=EPSILON, maxfev=None, verbose=0,
            seed=2005815, population_size=None, xprob=0.9,

@@ -251,8 +251,16 @@ class DataPHA(Data1DInt):
             raise DataErr('nogrouping', self.name)
 
         # If grouping status is being changed, we need to reset the mask
+        # to be correct size, while still noticing groups within the filter
         if self._grouped != val:
-            self.mask = True
+            do_notice = numpy.iterable(self.mask)
+            if do_notice:
+                old_filter = self.get_filter(val)
+                self._grouped = val
+                self.ignore()
+                for vals in parse_expr(old_filter):
+                    self.notice(*vals)
+            #self.mask = True
 
         self._grouped = val
     grouped = property(_get_grouped, _set_grouped, doc='Are the data grouped?')
@@ -783,22 +791,12 @@ class DataPHA(Data1DInt):
 
     def _dynamic_group(self, group_func, *args, **kwargs):
 
-        for bkg_id in self.background_ids:
-            bkg = self.get_background(bkg_id)
-            if(len(self.counts) == len(bkg.counts) and
-               self.grouped == bkg.grouped and self.units == bkg.units):
-                if self.grouped and not numpy.all(self.grouping==bkg.grouping):
-                    continue
-                bkg.notice()
-
         keys = kwargs.keys()[:]
         for key in keys:
             if kwargs[key] is None:
                 kwargs.pop(key)
 
-
-        #old_filter = self.get_filter(group=False)
-        old_filter = self.get_filter(group=True)
+        old_filter = self.get_filter(group=False)
         do_notice = numpy.iterable(self.mask)
 
         self.grouping, self.quality = group_func(*args, **kwargs)
@@ -809,8 +807,7 @@ class DataPHA(Data1DInt):
             # self.group() above has cleared the filter if applicable
             # No, that just sets a flag.  So manually clear filter
             # here
-            if self.mask is not None:
-                self.notice()
+            self.ignore()
             for vals in parse_expr(old_filter):
                 self.notice(*vals)
 
@@ -824,23 +821,39 @@ class DataPHA(Data1DInt):
     #
     # The groupstatus check thus has to be done in *each* of the following
     # group functions.
+
+    ## Dynamic grouping functions now automatically impose the
+    ## same grouping conditions on *all* associated background data sets.
+    ## CIAO 4.5 bug fix, 05/01/2012
     def group_bins(self, num, tabStops=None):
         if not groupstatus:
             raise ImportErr('importfailed', 'group', 'dynamic grouping')
         self._dynamic_group(pygroup.grpNumBins, len(self.channel), num,
                             tabStops=tabStops)
+        for bkg_id in self.background_ids:
+            bkg = self.get_background(bkg_id) 
+            if (hasattr(bkg, "group_bins")):
+                bkg.group_bins(num, tabStops=tabStops)
 
     def group_width(self, val, tabStops=None):
         if not groupstatus:
             raise ImportErr('importfailed', 'group', 'dynamic grouping')
         self._dynamic_group(pygroup.grpBinWidth, len(self.channel), val,
                             tabStops=tabStops)
+        for bkg_id in self.background_ids:
+            bkg = self.get_background(bkg_id) 
+            if (hasattr(bkg, "group_width")):
+                bkg.group_width(val, tabStops=tabStops)
 
     def group_counts(self, num, maxLength=None, tabStops=None):
         if not groupstatus:
             raise ImportErr('importfailed', 'group', 'dynamic grouping')
         self._dynamic_group(pygroup.grpNumCounts, self.counts, num,
                             maxLength=maxLength, tabStops=tabStops)
+        for bkg_id in self.background_ids:
+            bkg = self.get_background(bkg_id) 
+            if (hasattr(bkg, "group_counts")):
+                bkg.group_counts(num, maxLength=maxLength, tabStops=tabStops)
 
     def group_snr(self, snr, maxLength=None, tabStops=None, errorCol=None):
         if not groupstatus:
@@ -848,19 +861,31 @@ class DataPHA(Data1DInt):
         self._dynamic_group(pygroup.grpSnr, self.counts, snr,
                             maxLength=maxLength, tabStops=tabStops,
                             errorCol=errorCol)
+        for bkg_id in self.background_ids:
+            bkg = self.get_background(bkg_id) 
+            if (hasattr(bkg, "group_snr")):
+                bkg.group_snr(snr, maxLength=maxLength, tabStops=tabStops, errorCol=errorCol)
 
-    def group_adapt(self, min, maxLength=None, tabStops=None):
+    def group_adapt(self, minimum, maxLength=None, tabStops=None):
         if not groupstatus:
             raise ImportErr('importfailed', 'group', 'dynamic grouping')
-        self._dynamic_group(pygroup.grpAdaptive, self.counts, min,
+        self._dynamic_group(pygroup.grpAdaptive, self.counts, minimum,
                             maxLength=maxLength, tabStops=tabStops)
+        for bkg_id in self.background_ids:
+            bkg = self.get_background(bkg_id) 
+            if (hasattr(bkg, "group_adapt")):
+                bkg.group_adapt(minimum, maxLength=maxLength, tabStops=tabStops)
 
-    def group_adapt_snr(self, min, maxLength=None, tabStops=None, errorCol=None):
+    def group_adapt_snr(self, minimum, maxLength=None, tabStops=None, errorCol=None):
         if not groupstatus:
             raise ImportErr('importfailed', 'group', 'dynamic grouping')
-        self._dynamic_group(pygroup.grpAdaptiveSnr, self.counts, min,
+        self._dynamic_group(pygroup.grpAdaptiveSnr, self.counts, minimum,
                             maxLength=maxLength, tabStops=tabStops,
                             errorCol=errorCol)
+        for bkg_id in self.background_ids:
+            bkg = self.get_background(bkg_id) 
+            if (hasattr(bkg, "group_adapt_snr")):
+                bkg.group_adapt_snr(minimum, maxLength=maxLength, tabStops=tabStops, errorCol=errorCol)
 
     def eval_model(self, modelfunc):
         return modelfunc(*self.get_indep(filter=False))
@@ -1300,6 +1325,23 @@ class DataPHA(Data1DInt):
 
 
     def notice(self, lo=None, hi=None, ignore=False):
+        # Automatically impose data's filter on background data sets,
+        # if and only if the background has no filter of its own.  The
+        # background has a filter if bkg.mask is an array.  If
+        # bkg.mask is instead a boolean and True, that means there is
+        # no filter on the background, and therefore it is safe to
+        # impose the data's new filter on the background too.
+        # Data and background units do have to be the same though.
+        for bkg_id in self.background_ids:
+            bkg = self.get_background(bkg_id)
+            ### FIXME -- if notice("0.5:4.0,5.0:7.0") was done above,
+            ###          it means that only  notice(0.5, 4.0) is called
+            ###          on the background
+            ##   Probably better to do in astro/ui/utils.py?
+            if (type(bkg.mask) is bool and bkg.mask is True
+                and self.units == bkg.units):
+                bkg.notice(lo, hi, ignore)
+
         ignore=bool_cast(ignore)
         if lo is None and hi is None:
             self.quality_filter=None
@@ -1317,6 +1359,56 @@ class DataPHA(Data1DInt):
               elo[0] > elo[-1] and  ehi[0] > ehi[-1] ) ):
             lo, hi = hi, lo
 
+        # If we are working in channel space, and the data are
+        # grouped, we must correct for the fact that bounds expressed
+        # expressed in channels must be converted to group number.
+        # This is the only set of units for which this must be done;
+        # energy and wavelength conversions above already take care of
+        # the distinction between grouped and ungrouped.
+
+        if (self.units=="channel" and self.grouped==True):
+
+            if (lo is not None and 
+                type(lo) != str and 
+                not(lo < self.channel[0])):
+
+                # Find the location of the first channel greater than
+                # or equal to lo in self.channel
+                # Then find out how many groups there are that contain
+                # the channels less than lo, and convert lo from a 
+                # channel number to the first group number that has channels 
+                # greater than or equal to lo.
+                
+                lo_index = numpy.where(self.channel >= lo)[0][0]
+                lo = len(numpy.where(self.grouping[:lo_index] > -1)[0]) + 1
+
+            if (hi is not None and 
+                type(hi) != str and 
+                not(hi > self.channel[-1])):
+
+                # Find the location of the first channel greater than
+                # or equal to hi in self.channel
+                # Then find out how many groups there are that contain
+                # the channels less than hi, and convert hi from a 
+                # channel number to the first group number that has channels 
+                # greater than or equal to hi.
+                hi_index = numpy.where(self.channel >= hi)[0][0]
+                hi = len(numpy.where(self.grouping[:hi_index] > -1)[0])
+
+                # If the original channel hi starts a new group,
+                # increment the group number 
+                if (self.grouping[hi_index] > -1):
+                    hi = hi + 1
+
+                # If the original channel hi is in a group such that
+                # the group has channels greater than original hi,
+                # then use the previous group as the highest group included
+                # in the filter. Avoid indexing beyond the end of the
+                # grouping array.
+                if (hi_index + 1 < len(self.grouping)):
+                    if (not(self.grouping[hi_index+1] > -1)):
+                        hi = hi - 1
+
         # Don't use the middle of the channel anymore as the
         # grouping function.  That was just plain dumb.
         # So just get back an array of groups 1-N, if grouped
@@ -1324,15 +1416,6 @@ class DataPHA(Data1DInt):
                         (self.apply_grouping(self.channel,
                                              self._make_groups),),
                         ignore)
-
-        for bkg_id in self.background_ids:
-            bkg = self.get_background(bkg_id)
-            if(len(self.counts) == len(bkg.counts) and
-               self.grouped == bkg.grouped and self.units == bkg.units):
-                if self.grouped and not numpy.all(self.grouping==bkg.grouping):
-                    continue
-                bkg.mask = self.mask
-
 
     def to_guess(self):
         elo, ehi = self._get_ebins(group=False)

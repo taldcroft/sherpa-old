@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # 
 #  Copyright (C) 2011  Smithsonian Astrophysical Observatory
 #
@@ -104,52 +103,69 @@ class ParameterScale(NoNewAttributesAfterInit):
 
     sigma = 1
 
-    def get_scales(self, fit):
+    def get_scales(self, fit, myscale=None):
         raise NotImplementedError
 
 
 class ParameterScaleVector(ParameterScale):
 
-    def get_scales(self, fit):
-
-        oldestmethod = fit.estmethod
-
-        covar = Covariance()
-        covar.config['sigma'] = self.sigma
-        fit.estmethod = Covariance()
-
-        try:
-            r = fit.est_errors()
-        finally:
-            fit.estmethod = oldestmethod
-
-        thawedpars = [par for par in fit.model.pars if not par.frozen]
+    def get_scales(self, fit, myscales=None):
 
         scales = []
-        for par, val, lo, hi in izip(thawedpars, r.parvals, r.parmins, r.parmaxes):
-            scale = None
-            if lo is not None and hi is not None:
-                scale = numpy.abs(lo)
-            else:
-                warning("Covariance failed for '%s', trying Confidence..." %
-                        par.fullname)
+        thawedpars = [par for par in fit.model.pars if not par.frozen]
 
-                conf = Confidence()
-                conf.config['sigma'] = self.sigma
-                fit.estmethod = conf
-                try:
-                    t = fit.est_errors(parlist = (par,))
-                    if t.parmins[0] is not None and t.parmaxes[0] is not None:
-                        scale = numpy.abs(t.parmins[0])
-                    else:
-                        warning('1 sigma bounds for parameter ' +
-                                par.fullname +
-                                ' could not be found, using soft limit minimum')
-                        scale = numpy.abs(par.min)
-                finally:
-                    fit.estmethod = oldestmethod
-            scales.append(scale)
+        if None == myscales:
 
+            oldestmethod = fit.estmethod
+
+            covar = Covariance()
+            covar.config['sigma'] = self.sigma
+            fit.estmethod = Covariance()
+
+            try:
+                r = fit.est_errors()
+            finally:
+                fit.estmethod = oldestmethod
+
+            for par, val, lo, hi in izip(thawedpars, r.parvals, r.parmins, r.parmaxes):
+                scale = None
+                if lo is not None and hi is not None:
+                    scale = numpy.abs(lo)
+                else:
+                    warning("Covariance failed for '%s', trying Confidence..." %
+                            par.fullname)
+
+                    conf = Confidence()
+                    conf.config['sigma'] = self.sigma
+                    fit.estmethod = conf
+                    try:
+                        t = fit.est_errors(parlist = (par,))
+                        if t.parmins[0] is not None and t.parmaxes[0] is not None:
+                            scale = numpy.abs(t.parmins[0])
+
+                        else:
+
+                            if t.parmins[0] is None and t.parmaxes[0] is not None:
+                                scale = numpy.abs(t.parmaxes[0])
+
+                            else:
+
+                                warning('1 sigma bounds for parameter ' +
+                                        par.fullname +
+                                        ' could not be found, using soft limit minimum')
+                                if 0.0 == numpy.abs(par.min):
+                                    scale = 1.0e-16
+                                else:
+                                    scale = numpy.abs(par.min)
+
+                    finally:
+                        fit.estmethod = oldestmethod
+                scales.append(scale)
+
+        else:
+            if not numpy.iterable( myscales ):
+                raise TypeError( "scales option must be iterable of length %d " % len( thawedpars ) )
+            scales = map( abs, myscales )
         scales = numpy.asarray(scales).transpose()
         return scales
 
@@ -157,18 +173,30 @@ class ParameterScaleVector(ParameterScale):
 class ParameterScaleMatrix(ParameterScale):
 
 
-    def get_scales(self, fit):
-        oldestmethod = fit.estmethod
-        fit.estmethod = Covariance()
+    def get_scales(self, fit, myscales=None):
 
-        try:
-            r = fit.est_errors()
-        finally:
-            fit.estmethod = oldestmethod
+        if myscales == None:
+            oldestmethod = fit.estmethod
+            fit.estmethod = Covariance()
 
-        cov = r.extra_output
-        #if type(r.extra_output) is dict:
-        #    cov = r.extra_output['cov']
+            try:
+                r = fit.est_errors()
+            finally:
+                fit.estmethod = oldestmethod
+
+            cov = r.extra_output
+
+        else:
+            if isinstance( myscales, (numpy.ndarray) ):
+                thawedpars = [par for par in fit.model.pars if not par.frozen]
+                npar = len( thawedpars )
+                if ( npar, npar ) == myscales.shape:
+                    cov = myscales
+                else:
+                    raise EstErr( 'scales must be an numpy array of size (%d,%d)' % (npar, npar ) )
+            else:
+                raise EstErr( 'scales must be an numpy array' )
+            cov = myscales
 
         if cov is None:
             raise EstErr('nocov')
@@ -221,18 +249,18 @@ class UniformParameterSampleFromScaleVector(ParameterSampleFromScaleVector):
 
 class NormalParameterSampleFromScaleVector(ParameterSampleFromScaleVector):
 
-    def get_sample(self, fit, num=1):
+    def get_sample(self, fit, myscales=None, num=1):
         vals = numpy.array(fit.model.thawedpars)
-        scales = self.scale.get_scales(fit)
+        scales = self.scale.get_scales(fit, myscales)
         samples = [numpy.random.normal(val, scale, int(num)) for val, scale in izip(vals, scales)]
         return numpy.asarray(samples).T
 
 
 class NormalParameterSampleFromScaleMatrix(ParameterSampleFromScaleMatrix):
 
-    def get_sample(self, fit, num=1):
+    def get_sample(self, fit, mycov=None, num=1):
         vals = numpy.array(fit.model.thawedpars)
-        cov = self.scale.get_scales(fit)
+        cov = self.scale.get_scales(fit,mycov)
         return numpy.random.multivariate_normal(vals, cov, int(num))
 
 

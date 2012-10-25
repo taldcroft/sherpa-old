@@ -842,7 +842,11 @@ def interp_util( xout, xin, yin ):
 
 def linear_interp( xout, xin, yin ):
     x0, x1, y0, y1 = interp_util( xout, xin, yin )
-    return (xout - x0) / (x1 - x0) * (y1 - y0) + y0
+    val = (xout - x0) / (x1 - x0) * (y1 - y0) + y0
+    if True == numpy.any( numpy.isnan( val ) ):
+        # to handle the case where two adjacent elements of xout are equal
+        return nearest_interp( xout, xin, yin )
+    return val
 
 def nearest_interp( xout, xin, yin ):
     x0, x1, y0, y1 = interp_util( xout, xin, yin )
@@ -1606,32 +1610,32 @@ def is_iterable( arg ):
 def is_sequence( start, mid, end ):
     return (start < mid) and (mid < end)
 
-## def Knuth_close( x, y, tol, myop=operator.__or__ ):
-##     """ The following text was taken verbatim from:
+def Knuth_close( x, y, tol, myop=operator.__or__ ):
+    """ The following text was taken verbatim from:
         
-##     http://www.boost.org/doc/libs/1_35_0/libs/test/doc/components/test_tools/floating_point_comparison.html#Introduction
+    http://www.boost.org/doc/libs/1_35_0/libs/test/doc/components/test_tools/floating_point_comparison.html#Introduction
 
-##     In most cases it is unreasonable to use an operator==(...)
-##     for a floating-point values equality check. The simple solution
-##     like abs(f1-f2) <= e does not work for very small or very big values.
-##     This floating-point comparison algorithm is based on the more
-##     confident solution presented by D. E. Knuth in 'The art of computer
-##     programming (vol II)'. For a given floating point values u and v and
-##     a tolerance e:
+    In most cases it is unreasonable to use an operator==(...)
+    for a floating-point values equality check. The simple solution
+    like abs(f1-f2) <= e does not work for very small or very big values.
+    This floating-point comparison algorithm is based on the more
+    confident solution presented by D. E. Knuth in 'The art of computer
+    programming (vol II)'. For a given floating point values u and v and
+    a tolerance e:
     
-##     | u - v | <= e * |u| and | u - v | <= e * |v|                    (1)
-##     defines a "very close with tolerance e" relationship between u and v
+    | u - v | <= e * |u| and | u - v | <= e * |v|                    (1)
+    defines a "very close with tolerance e" relationship between u and v
     
-##     | u - v | <= e * |u| or   | u - v | <= e * |v|                   (2)
-##     defines a "close enough with tolerance e" relationship between
-##     u and v. Both relationships are commutative but are not transitive.
-##     The relationship defined by inequations (1) is stronger that the
-##     relationship defined by inequations (2) (i.e. (1) => (2) )."""
+    | u - v | <= e * |u| or   | u - v | <= e * |v|                   (2)
+    defines a "close enough with tolerance e" relationship between
+    u and v. Both relationships are commutative but are not transitive.
+    The relationship defined by inequations (1) is stronger that the
+    relationship defined by inequations (2) (i.e. (1) => (2) )."""
     
-##     diff = abs( x - y )
-##     if 0.0 == x or 0.0 == y:
-##         return diff <= tol
-##     return myop( diff <= tol * abs( x ), diff <= tol * abs( y ) )
+    diff = abs( x - y )
+    if 0.0 == x or 0.0 == y:
+        return diff <= tol
+    return myop( diff <= tol * abs( x ), diff <= tol * abs( y ) )
 
 def safe_div( num, denom ):
     import sys
@@ -1648,7 +1652,7 @@ def safe_div( num, denom ):
     
     return num / denom
 
-def Knuth_close( x, y, tol, myop=operator.__or__ ):
+def Knuth_boost_close( x, y, tol, myop=operator.__or__ ):
     """ The following text was taken verbatim from:
         
     http://www.boost.org/doc/libs/1_35_0/libs/test/doc/components/test_tools/floating_point_comparison.html#Introduction
@@ -1936,7 +1940,13 @@ def demuller( fcn, xa, xb, xc, fa=None, fb=None, fc=None, args=(),
     >>> p = ( a + 4 / a + 1 ) / 3.0
     >>> print p
     1.83928675521"""
-    
+
+    def is_nan( arg ):
+        if arg != arg:
+            return True
+        if arg is numpy.nan:
+            return True
+        return numpy.isnan( arg )
 
     history = [ [], [] ]
     nfev, myfcn = func_counter_history( fcn, history )
@@ -1961,8 +1971,12 @@ def demuller( fcn, xa, xb, xc, fa=None, fb=None, fc=None, args=(),
         while nfev[0] < maxfev:
             
             [B, C] = transformed_quad_coef( [xa, xb, xc], [fa, fb, fc] )
-            
+
             discriminant = max( C * C - 4.0 * fc * B, 0.0 )
+
+            if is_nan( B ) or is_nan( C ) or \
+                    0.0 == C + mysgn( C ) * numpy.sqrt( discriminant ):
+                return [ [None, None], [ [None, None], [None, None] ], nfev[0] ]
 
             xd = xc - 2.0 * fc / ( C + mysgn( C ) * numpy.sqrt( discriminant ) )
 

@@ -21,6 +21,7 @@ from math import sqrt
 from sherpa.utils import SherpaTestCase
 from sherpa.optmethods import optfcts
 ## from sherpa.optmethods import myoptfcts
+## from sherpa.optmethods import stogo
 from sherpa.optmethods import _tstoptfct
 
 class test_optmethods(SherpaTestCase):
@@ -40,29 +41,14 @@ class test_optmethods(SherpaTestCase):
         self.tst( optfcts.neldermead, name + self.nm, fct, fmin,
                   x0, xmin, xmax, iprint=iprint )
 ##         self.tst( myoptfcts.nelder_mead, name + self.nm, fct, fmin,
-##                   x0, xmin, xmax, iprint=iprint )        
+##                   x0, xmin, xmax, iprint=iprint )
+##         self.tst( stogo.stogo, name + '_stogo', fct, fmin,
+##                   x0, xmin, xmax, iprint=iprint )
         self.tst( optfcts.montecarlo,  name + self.mc , fct, fmin,
                   x0, xmin, xmax, iprint=iprint, maxfev=8192*len(x0) )
         self.tst( optfcts.lmdif, name + self.lm, fct, fmin,
                   x0, xmin, xmax, iprint=iprint )
-        self.tstgridsearch( optfcts.grid_search, name + '_gridsearch', fct,
-                            fmin, x0, xmin, xmax, iprint=iprint,
-                            method='neldermead' )
-        self.tstgridsearch( optfcts.grid_search, name + '_gridsearch', fct,
-                            fmin, x0, xmin, xmax, iprint=iprint,
-                            method='levmar' )        
-
-    def tstgridsearch( self, optmethod, name, fct, fmin, x0, xmin, xmax,
-                       maxfev=4096, iprint=False, method='neldermead' ):
-        status, x, fval, msg, stuff = optmethod( fct, x0, xmin, xmax, maxfev=maxfev*len(x0), num=1, method=method)
-        nfev = stuff.get('nfev')
-        if iprint:
-            print 'fmin = %g vs fval = %g' % ( fmin, fval )
-        if self.verbose or iprint:
             
-            self.print_result( name, fval, x, nfev )
-        self.assertEqualWithinTol( fval, fmin, self.tolerance )
-        
     def tst( self, optmethod, name, fct, fmin, x0, xmin, xmax,
              maxfev=4096, iprint=False ):
         status, x, fval, msg, stuff = optmethod( fct, x0, xmin, xmax, maxfev=maxfev*len(x0))

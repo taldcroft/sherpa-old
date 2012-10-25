@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # 
 #  Copyright (C) 2010  Smithsonian Astrophysical Observatory
 #
@@ -215,7 +214,7 @@ class LikelihoodRatioTest(NoNewAttributesAfterInit):
 	    
 	# Calculate niter samples using null best-fit and covariance
 	sampler = NormalParameterSampleFromScaleMatrix()
-	samples = sampler.get_sample(nullfit, niter)
+	samples = sampler.get_sample(nullfit, None, niter)
 	   
 	# Fit with alt model, null component starts at null's best fit params.
 	altfit = Fit(data, alt, stat, method, Covariance())

@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-#
 # 
 #  Copyright (C) 2010  Smithsonian Astrophysical Observatory
 #

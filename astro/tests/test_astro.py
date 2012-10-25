@@ -283,8 +283,11 @@ class test_threads(SherpaTestCase):
         self.assertEqual(ui.get_fit_results().dof,159)
 
     @needs_data
-    def test_grouped(self):
-        self.run_thread('grouped')
+    # As of CIAO 4.5, can filter on channel number, even when
+    # data are grouped! Test results should exactly match CIAO 4.4
+    # fit results in grouped/fit.py
+    def test_grouped_ciao4_5(self):
+        self.run_thread('grouped_ciao4.5')
         self.assertEqualWithinTol(ui.get_fit_results().statval, 18.8316, 1e-4)
         self.assertEqual(ui.get_fit_results().numpoints, 46)
         self.assertEqualWithinTol(self.locals['aa'].gamma.val, 1.83906, 1e-4)
@@ -416,21 +419,13 @@ class test_threads(SherpaTestCase):
     @needs_data
     def test_lev3fft(self):
         self.run_thread('lev3fft', scriptname='bar.py')
-
-        # self.assertEqualWithinTol(ui.get_source().lhs.fwhm.val, 0.0034705, 1e-4)
-        # self.assertEqualWithinTol(ui.get_source().lhs.xpos.val, 150.016, 1e-4)
-        # self.assertEqualWithinTol(ui.get_source().lhs.ypos.val, 2.66587, 1e-4)
-        # self.assertEqualWithinTol(ui.get_source().lhs.ampl.val, 0.0117411, 1e-4)
-        # self.assertEqualWithinTol(ui.get_source().rhs.c0.val, 0.0190897, 1e-4)
-
-        self.assertEqualWithinTol(self.locals['src'].fwhm.val, 0.0034705, 1e-4)
+        self.assertEqualWithinTol(self.locals['src'].fwhm.val, 0.04418584, 1e-4)
         self.assertEqualWithinTol(self.locals['src'].xpos.val, 150.016, 1e-4)
-        self.assertEqualWithinTol(self.locals['src'].ypos.val, 2.66587, 1e-4)
-        self.assertEqualWithinTol(self.locals['src'].ampl.val, 0.0117411, 1e-4)
-        self.assertEqualWithinTol(self.locals['bkg'].c0.val, 0.0190897, 1e-4)
-
+        self.assertEqualWithinTol(self.locals['src'].ypos.val, 2.66493839, 1e-4)
+        self.assertEqualWithinTol(self.locals['src'].ampl.val, 1.56090546, 1e-4)
+        self.assertEqualWithinTol(self.locals['bkg'].c0.val, -1.513700715, 1e-4)
         self.assertEqualWithinTol(ui.get_fit_results().istatval, 19496.3, 1e-4)
-        self.assertEqualWithinTol(ui.get_fit_results().statval, 607.09, 1e-4)
+        self.assertEqualWithinTol(ui.get_fit_results().statval, 592.32647, 1e-4)
         self.assertEqual(ui.get_fit_results().numpoints, 3307)
         self.assertEqual(ui.get_fit_results().dof, 3302)
 

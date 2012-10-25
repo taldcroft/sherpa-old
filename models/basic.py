@@ -63,7 +63,7 @@ class Box1D(ArithmeticModel):
 class Const1D(ArithmeticModel):
 
     def __init__(self, name='const1d'):
-        self.c0 = Parameter(name, 'c0', 1, 0)
+        self.c0 = Parameter(name, 'c0', 1)
         ArithmeticModel.__init__(self, name, (self.c0,))
 
     def guess(self, dep, *args, **kwargs):

@@ -252,7 +252,7 @@ class Projection(EstMethod):
 
     # defined pre-instantiation for pickling
     _added_config = {'remin': 0.01,
-                     'fast': True,
+                     'fast': False,
                      'parallel':True,
                      'numcores' : _ncpus,
                      'maxfits' : 5,

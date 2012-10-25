@@ -5197,13 +5197,47 @@ class Session(sherpa.ui.utils.Session):
 
         self.set_rmf(id, rmf)
 
+        # Update background here.  bkg contains a new background;
+        # delete the old background (if any) and add the new background
+        # to the simulated data set, BEFORE simulating data, and BEFORE
+        # adding scaled background counts to the simulated data.
         if bkg is not None:
             for bkg_id in d.background_ids:
                 d.delete_background(bkg_id)
             self.set_bkg(id, bkg)
 
+        # Calculate the source model, and take a Poisson draw based on
+        # the source model.  That becomes the simulated data.
         m = self.get_model(id)
         d.counts = sherpa.utils.poisson_noise( d.eval_model(m) )
+
+        # Add in background counts:
+        #  -- Scale each background properly given data's
+        #     exposure time, BACKSCAL and AREASCAL
+        #  -- Take average of scaled backgrounds
+        #  -- Take a Poisson draw based on the average scaled background
+        #  -- Add that to the simulated data counts
+        #
+        # Adding background counts is OPTIONAL, only done if user sets
+        # "bkg" argument to fake_pha.  The reason is that the user could
+        # well set a "source" model that does include a background
+        # component.  In that case users should have the option to simulate
+        # WITHOUT background counts being added in.
+        #
+        # If bkg is not None, then backgrounds were previously updated
+        # above, so it is OK to use "bkg is not None" as the condition
+        # here.
+        if bkg is not None:
+            nbkg = len(d.background_ids)
+            b=0
+            for bkg_id in d.background_ids:
+                b=b + d.get_background_scale() * d.get_background(bkg_id).counts
+                
+            if (nbkg > 0):
+                b = b / nbkg
+                b_poisson = sherpa.utils.poisson_noise(b)
+                d.counts = d.counts + b_poisson
+
         d.name = 'faked'
 
 
@@ -6883,7 +6917,7 @@ class Session(sherpa.ui.utils.Session):
 
            numcores    - specify the number of cores for parallel processing.
                          All available cores are used by default.
-                         default=None
+                         default = None
 
            bkg_id      - Sherpa background id
                          default = default bkg id
@@ -6983,7 +7017,7 @@ class Session(sherpa.ui.utils.Session):
 
            numcores    - specify the number of cores for parallel processing.
                          All available cores are used by default.
-                         default=None
+                         default = None
 
            bkg_id      - Sherpa background id
                          default = default bkg id
@@ -7640,7 +7674,7 @@ class Session(sherpa.ui.utils.Session):
 
            numcores    - specify the number of cores for parallel processing.
                          All available cores are used by default.
-                         default=None
+                         default = None
 
            bkg_id      - Sherpa background id
                          default = default bkg id
@@ -7706,7 +7740,7 @@ class Session(sherpa.ui.utils.Session):
 
            numcores    - specify the number of cores for parallel processing.
                          All available cores are used by default.
-                         default=None
+                         default = None
 
            bkg_id      - Sherpa background id
                          default = default bkg id
@@ -7869,8 +7903,8 @@ class Session(sherpa.ui.utils.Session):
     ###########################################################################
 
 
-    def sample_photon_flux(self, lo=None, hi=None, id=None, num=1, correlated=False,
-                           numcores=None, bkg_id=None):
+    def sample_photon_flux(self, lo=None, hi=None, id=None, num=1, scales=None,
+                           correlated=False, numcores=None, bkg_id=None):
         """
         sample_photon_flux
 
@@ -7892,12 +7926,19 @@ class Session(sherpa.ui.utils.Session):
            num         - Number of simulations
                          default = 1
 
-           correlated  - Use a multi-variate distribution to sample parameter values
+           correlated  - Use a multi-variate distribution to sample parameter values.
                          default = False
+
+           scales      - User supplied scales for the sampling distributions.
+                         If correlated is True then scales must be a symmetric
+                         and postive semi-definite 2-D array_like of shape 
+                         (N,N) where N is the number of free parameters,
+                         otherwise scales can be a 1-D array_like, of length N.
+                         default = None
 
            numcores    - specify the number of cores for parallel processing.
                          All available cores are used by default.
-                         default=None
+                         default = None
 
            bkg_id      - Sherpa background id
                          default = default bkg id
@@ -7922,14 +7963,15 @@ class Session(sherpa.ui.utils.Session):
             src = self.get_source(id)
             
         correlated=sherpa.utils.bool_cast(correlated)
-        
+
         return sherpa.astro.flux.sample_flux(fit, data, src,
                                              sherpa.astro.utils.calc_photon_flux,
-                                             correlated, num, lo, hi, numcores)
+                                             correlated, num, lo, hi, numcores,
+                                             scales)
 
 
-    def sample_energy_flux(self, lo=None, hi=None, id=None, num=1, correlated=False,
-                           numcores=None, bkg_id=None):
+    def sample_energy_flux(self, lo=None, hi=None, id=None, num=1, scales=None,
+                           correlated=False, numcores=None, bkg_id=None):
         """
         sample_energy_flux
 
@@ -7951,12 +7993,19 @@ class Session(sherpa.ui.utils.Session):
            num         - Number of simulations
                          default = 1
 
-           correlated  - Use a multi-variate distribution to sample parameter values
+           correlated  - Use a multi-variate distribution to sample parameter values.
                          default = False
+
+           scales      - User supplied scales for the sampling distributions.
+                         If correlated is True then scales must be a symmetric
+                         and postive semi-definite 2-D array_like of shape 
+                         (N,N) where N is the number of free parameters,
+                         otherwise scales can be a 1-D array_like, of length N.
+                         default = None
 
            numcores    - specify the number of cores for parallel processing.
                          All available cores are used by default.
-                         default=None
+                         default = None
 
            bkg_id      - Sherpa background id
                          default = default bkg id
@@ -7981,11 +8030,130 @@ class Session(sherpa.ui.utils.Session):
             src = self.get_source(id)
             
         correlated=sherpa.utils.bool_cast(correlated)
-        
+
         return sherpa.astro.flux.sample_flux(fit, data, src, 
                                              sherpa.astro.utils.calc_energy_flux,
-                                             correlated, num, lo, hi, numcores)
+                                             correlated, num, lo, hi, numcores,
+                                             scales)
 
+    def sample_flux(self, modelcomponent=None, lo=None, hi=None, id=None,
+                     num=1, scales=None, correlated=False,
+                     numcores=None, bkg_id=None, Xrays=True, confidence=68):
+         """
+         sample_flux
+
+         SYNOPSIS
+            Get a sample of the parameters with the corresponding flux and a
+            flux uncertainty for a model component or a combination of model
+            components.
+
+
+         SYNTAX
+
+         Arguments:
+            modelcomponent - a model component or by default the model
+                             expression built from the previously defined
+                             models.
+                             default = None
+
+            lo             - lower energy bound
+                             default = None
+
+            hi             - upper energy bound
+                             default = None
+
+            id             - Sherpa data id
+                             default = default data id
+
+            num            - Number of realization in the sample
+                             default = 1
+
+            correlated	   - If True then include a full covariance matrix
+			     to set scales for multi-variate distributions,
+                             otherwise use only diagonal elements (variances).  
+			     default = False
+
+            scales	   - User supplied scales for the sampling
+			     distributions.  If correlated is True then scales
+                             must be a symmetric and postive semi-definite 2-D
+                             array_like of shape (N,N) where N is the number of
+                             free parameters, otherwise scales can be a 1-D
+                             array_like, of length N.
+			     default = None
+
+            numcores       - specify the number of cores for parallel 
+			     processing. All available cores are used by
+                             default.
+                             default = None
+
+            bkg_id         - Sherpa background id
+                             default = default bkg_id
+
+            Xrays          - If True then calc_energy_flux used and the
+                             returned flux is in units of erg/cm2/s, otherwise
+                             the units are not specified and depend the data.
+                             default = True
+
+            confidence     - confidence level for the returned flux uncertainty
+                             expressed as percentile
+			     default = 68
+
+         Returns:
+            array of parameter values and a flux value with lower and upper
+            bounds.
+
+         DESCRIPTION
+	    Get a sample of parameters with a corresponding flux and a
+	    flux uncertainty for a model component or a combination of
+	    model components. The model components have to be
+	    previously defined and used in the fit. The samples are
+	    generated from the multi-variate normal distributions with
+	    the scales defined by covariance (if at the best fit) or
+	    supplied (as "scales"). The flux is calculated for each
+	    set of new parameters.  The returned flux value is given
+	    by a sample's median with the lower and upper quantiles
+	    defined by the confidence level supplied to the function.
+
+	 EXAMPLES
+
+
+         SEE ALSO
+            get_energy_flux_plot, get_photon_flux_plot, plot_photon_flux,
+            plot_energy_flux, sample_photon_flux, sample_energy_flux, 
+	    calc_energy_flux, calc_photon_flux, plot_cdf, plot_pdf, normal_sample,
+	    t_sample, get_draws
+         """
+
+         ids, fit = self._get_fit(id)
+         data = self.get_data(id)
+         src  = None
+         if bkg_id is not None:
+             data = self.get_bkg(id, bkg_id)
+             src  = self.get_bkg_source(id, bkg_id)
+         else:
+             src = self.get_source(id)
+            
+         if None == modelcomponent:
+             modelcomponent = src
+ 
+         correlated=sherpa.utils.bool_cast(correlated)
+
+         if not isinstance( modelcomponent, sherpa.models.model.Model ):
+             raise ArgumentTypeErr( 'badarg', 'modelcomponent', 'a model' )
+
+         if False == Xrays:
+             samples = self.calc_energy_flux( lo=lo, hi=hi, id=id,
+                                              bkg_id=bkg_id )
+         else:
+             samples = self.sample_energy_flux( lo=lo, hi=hi, id=id, num=num,
+                                               scales=scales,
+                                               correlated=correlated,
+                                               numcores=numcores,
+                                               bkg_id=bkg_id )
+
+         return sherpa.astro.flux.calc_sample_flux( id, lo, hi, self, fit, data,
+                                                    samples, modelcomponent,
+                                                    confidence )
 
     def eqwidth(self, src, combo, id=None, lo=None, hi=None, bkg_id=None):
         """
