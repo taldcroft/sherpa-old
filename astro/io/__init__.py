@@ -4,7 +4,7 @@
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
-#  the Free Software Foundation; either version 2 of the License, or
+#  the Free Software Foundation; either version 3 of the License, or
 #  (at your option) any later version.
 #
 #  This program is distributed in the hope that it will be useful,
@@ -47,9 +47,11 @@ warning = logging.getLogger(__name__).warning
 info    = logging.getLogger(__name__).info
 
 
+read_table_blocks = backend.read_table_blocks
+
 __all__ = ('read_table', 'read_image', 'read_arf', 'read_rmf', 'read_arrays',
            'read_pha', 'write_image','write_pha', 'write_table',
-           'pack_table', 'pack_image', 'pack_pha')
+           'pack_table', 'pack_image', 'pack_pha', 'read_table_blocks')
 
 
 def _is_subclass(t1, t2):
@@ -324,7 +326,7 @@ def _pack_pha(dataset):
 
     # Header Keys
     header = {}
-    if hasattr(dataset,'header') and type(dataset.header) is dict:
+    if hasattr(dataset,'header'): #and type(dataset.header) is dict:
         header = dataset.header.copy()
 
     header['EXPOSURE'] = getattr(dataset, 'exposure', 'none')

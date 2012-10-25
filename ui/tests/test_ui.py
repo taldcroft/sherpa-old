@@ -1,6 +1,23 @@
 #/usr/bin/env python
+
 from sherpa.utils import SherpaTest, SherpaTestCase, needs_data
+from sherpa.models import ArithmeticModel, Parameter
 import sherpa.ui as ui
+import numpy
+
+class UserModel(ArithmeticModel):
+
+    def __init__(self, name='usermodel'):
+        self.param1 = Parameter(name, 'param1', 1, min=0, max=100)
+        self.param2 = Parameter(name, 'param2', 1, min=-100, max=100)
+
+        ArithmeticModel.__init__(self, name, (self.param1,
+                                              self.param2))
+
+    def calc(self, p, x, *args, **kwargs):
+        return p[0]*x+p[1]
+
+
 
 class test_ui(SherpaTestCase):
 
@@ -39,6 +56,58 @@ class test_ui(SherpaTestCase):
     def test_filter_ascii(self):
         ui.load_filter(self.filter)
         ui.load_filter(self.filter, ignore=True)
+
+    @needs_data
+    def test_add_model(self):
+        ui.add_model(UserModel)
+        ui.set_model('usermodel.user1')
+
+    @needs_data
+    def test_set_full_model(self):
+        ui.load_psf('psf1', 'gauss2d.g1')
+        ui.set_full_model('psf1(gauss2d.g2)+const2d.c1')
+        ui.get_model()
+        ui.get_source()
+
+
+
+class test_psf_ui(SherpaTestCase):
+
+    models1d = ['gauss1d', 'delta1d', 'normgauss1d']
+    models2d = ['gauss2d', 'delta2d', 'normgauss2d']
+
+    def setUp(self):
+        pass
+
+    def tearDown(self):
+        pass
+
+    def test_psf_model2d(self):
+        ui.dataspace1d(1, 10)
+        for model in self.models1d:
+            try:
+                ui.load_psf('psf1d', model+'.mdl')
+                ui.set_psf('psf1d')
+                mdl = ui.get_model_component('mdl')
+                self.assert_( (numpy.array(mdl.get_center()) ==
+                               numpy.array([4])).all() )
+            except:
+                print model
+                raise
+
+
+    def test_psf_model2d(self):
+        ui.dataspace2d([216,261])
+        for model in self.models2d:
+            try:
+                ui.load_psf('psf2d', model+'.mdl')
+                ui.set_psf('psf2d')
+                mdl = ui.get_model_component('mdl')
+                self.assert_( (numpy.array(mdl.get_center()) ==
+                               numpy.array([108,130])).all() )
+            except:
+                print model
+                raise
 
 
 if __name__ == '__main__':

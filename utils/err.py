@@ -4,7 +4,7 @@
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
-#  the Free Software Foundation; either version 2 of the License, or
+#  the Free Software Foundation; either version 3 of the License, or
 #  (at your option) any later version.
 #
 #  This program is distributed in the hope that it will be useful,
@@ -242,6 +242,7 @@ class PSFErr(SherpaErr):
             'nopsf'  : "model '%s' does not have an associated PSF function",
             'mismatch' : 'array size mismatch between %s and %s',
             'badsize' : 'PSF kernel size must be <=  data size, kernel: %s data: %s',
+            'ndim' : 'PSF model dimension must be <= 2'
             }
 
     def __init__(self, key, *args):
@@ -272,6 +273,7 @@ class IOErr(SherpaErr):
             'badargs' : "data set '%s' takes at least %s args",
             'badarray' : "'%s' must be a Numpy array, list, or tuple",
             'notascii' : "file '%s' does not appear to be ASCII",
+            'noparamcols' : 'No parameter columns found in %s',
             'toomanycols' : "Received more column names: %s, than required: %s",
             'reqcol' : "Required column '%s' not found in %s",
             'badcol' : "unable to read required column %s from file",

@@ -4,7 +4,7 @@
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
-#  the Free Software Foundation; either version 2 of the License, or
+#  the Free Software Foundation; either version 3 of the License, or
 #  (at your option) any later version.
 #
 #  This program is distributed in the hope that it will be useful,
@@ -43,8 +43,8 @@ import sys
 
 __all__ = ('banner', 'get_include', 'test')
 
-__versionstr__ = '4.3.1'
-__version__ = 40301
+__versionstr__ = '4.4.2'
+__version__ = 40402
 
 class Formatter(logging.Formatter):
     def format(self, record):

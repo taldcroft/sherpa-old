@@ -4,7 +4,7 @@
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
-#  the Free Software Foundation; either version 2 of the License, or
+#  the Free Software Foundation; either version 3 of the License, or
 #  (at your option) any later version.
 #
 #  This program is distributed in the hope that it will be useful,
@@ -18,322 +18,487 @@
 #
 
 import numpy
-from sherpa.utils.err import InstrumentErr, DataErr
+from sherpa.utils.err import InstrumentErr, DataErr, PSFErr
 from sherpa.models.model import ArithmeticFunctionModel, NestedModel, \
     ArithmeticModel, CompositeModel, Model
-
+from sherpa.astro.io.wcs import WCS
+from sherpa.instrument import PSFModel as _PSFModel
 from sherpa.utils import NoNewAttributesAfterInit
-from sherpa.data import BaseData
-from sherpa.astro.data import DataARF, DataRMF, DataPHA, _notice_resp
+from sherpa.data import BaseData, Data1D
+from sherpa.astro.data import DataARF, DataRMF, DataPHA, _notice_resp, \
+    DataIMG
 from sherpa.utils import sao_fcmp, sum_intervals, sao_arange
 from sherpa.astro.utils import compile_energy_grid
 from itertools import izip
 
 _tol = numpy.finfo(numpy.float32).eps
 
-__all__ = ('RMFModel', 'ARFModel', 'MultiResponseSumModel', 'PileupRMFModel',
-           'RMF1D', 'ARF1D',
-           'Response1D', 'MultipleResponse1D','PileupResponse1D')
+__all__ = ('RMFModel', 'ARFModel', 'RSPModel',
+           'RMFModelPHA', 'RMFModelNoPHA',
+           'ARFModelPHA', 'ARFModelNoPHA',
+           'RSPModelPHA', 'RSPModelNoPHA',
+           'MultiResponseSumModel', 'PileupRMFModel', 'RMF1D', 'ARF1D',
+           'Response1D', 'MultipleResponse1D','PileupResponse1D',
+           'PSFModel')
 
 
 class RMFModel(CompositeModel, ArithmeticModel):
-
-    def __init__(self, rmf, model, pha=None, arf=None):
-        _notice_resp(None, arf, rmf)
-        self.channel = sao_arange(1, rmf.detchans)  # sao_arange is inclusive
-        self.mask = numpy.ones(rmf.detchans, dtype=bool)
+    """
+    Base class for expressing RMF convolution in model expressions
+    """
+    def __init__(self, rmf, model):
         self.rmf = rmf
-        self.arf = arf
-        self.pha = pha
-        self.elo = None; self.ehi = None  # Energy space
-        self.lo = None; self.hi = None    # Wavelength space
-
-        # EXPERIMENTAL voodoo
-        if arf is None and isinstance(model, ARFModel):
-            self.arf = model.arf
-            if model.rmf is None:
-                model.rmf = self.rmf
-
-        #self.model = NestedModel.wrapobj(model)
         self.model = model
-        self.otherargs = None
-        self.otherkwargs = None
+
+        # Logic for ArithmeticModel.__init__
         self.pars = ()
-        CompositeModel.__init__(self,
-                                ('%s(%s)' % ('apply_rmf', self.model.name)),
-                                (self.model,))
-        self._get_otherargs()
+
+        # FIXME: group pairs of coordinates with one attribute
+
+        self.elo = None; self.ehi = None  # Energy space
+        self.lo = None;  self.hi = None   # Wavelength space
+        self.xlo = None; self.xhi = None  # Current Spectral coordinates
+
+        # Used to rebin against finer or coarser energy grids
+        self.rmfargs = ()
+
+        CompositeModel.__init__(self, 'apply_rmf(%s)' % model.name, (model,))
+        self.filter()
 
 
-    def _get_otherargs(self):
-        elo, ehi = self.rmf.get_indep()
-        args = ()
+    def filter(self):
+        # Energy grid (keV)
+        self.elo, self.ehi = self.rmf.get_indep()
 
-        # PHA <=> RMF case
-        pha = self.pha
-        if (self.arf is None and pha is not None and 
-            pha.bin_lo is not None and pha.bin_hi is not None):
-            if len(pha.bin_lo) != len(self.rmf.energ_lo):
-                args = pha._get_ebins(group=False)
-
-        self.elo, self.ehi = elo, ehi
+        # Wavelength grid (angstroms)
         self.lo, self.hi = DataPHA._hc/self.ehi, DataPHA._hc/self.elo
 
-        # Compare malformed grids in energy space
-        self.otherargs = ((elo,ehi), args)
+        # Assume energy as default spectral coordinates
+        self.xlo, self.xhi = self.elo, self.ehi
+
+        # Used to rebin against finer or coarser energy grids
+        self.rmfargs = ()
 
 
     def startup(self):
-        pha = self.pha
-        if pha is not None:
-            self.channel = pha.get_noticed_channels()
-            self.mask = pha.get_mask()
-            if numpy.iterable(pha.mask):
-                _notice_resp(self.channel, self.arf, self.rmf)
-
-        self._get_otherargs()
         self.model.startup()
         CompositeModel.startup(self)
 
 
     def teardown(self):
-        pha = self.pha
-        rmf = self.rmf
-        self.channel = sao_arange(1, rmf.detchans)
-        self.mask = numpy.ones(rmf.detchans, dtype=bool)
-
-        if pha is not None:
-            if numpy.iterable(pha.mask):
-                _notice_resp(None, self.arf, rmf)
-
-        self._get_otherargs()
         self.model.teardown()
         CompositeModel.teardown(self)
 
 
-    def _check_for_user_grid(self, x):
-        return (len(self.channel) != len(x) or
-                not (sao_fcmp(self.channel, x, _tol)==0).all())
+    def calc(self, p, x, xhi=None, *args, **kwargs):
+        raise NotImplementedError
 
 
-    def _startup_user_grid(self, x):
-        # fit() never comes in here b/c it calls startup()
+class ARFModel(CompositeModel, ArithmeticModel):
+    """
+    Base class for expressing ARF convolution in model expressions
+    """
+    def __init__(self, arf, model):
+        self.arf = arf
+        self.model = model
 
-        self.mask = numpy.zeros(self.rmf.detchans, dtype=bool)
-        self.mask[numpy.searchsorted(self.channel, x)]=True
+        self.elo = None; self.ehi = None  # Energy space
+        self.lo = None;  self.hi = None   # Wavelength space
+        self.xlo = None; self.xhi = None  # Current Spectral coordinates
 
-        _notice_resp(x, self.arf, self.rmf)
+        # Used to rebin against finer or coarser energy grids
+        self.arfargs = ()
 
-        self._get_otherargs()
-        if hasattr(self.model, '_get_otherargs'):
-            self.model._get_otherargs()
+        # Logic for ArithmeticModel.__init__
+        self.pars = ()
 
-
-    def _teardown_user_grid(self):
-        # fit() never comes in here b/c it calls startup()
-
-        self.mask = numpy.ones(self.rmf.detchans, dtype=bool)
-
-        _notice_resp(None, self.arf, self.rmf)
-
-        self._get_otherargs()
-        if hasattr(self.model, '_get_otherargs'):
-            self.model._get_otherargs()
+        CompositeModel.__init__(self, 'apply_arf(%s)' % model.name, (model,))
+        self.filter()
 
 
-    def _calc(self, p, xlo, xhi):
-        # Evaluate source model on RMF energy/wave grid OR
-        # model.calc --> arf fold / source model
-        src = self.model.calc(p, xlo, xhi)
+    def filter(self):
+        # Energy grid (keV)
+        self.elo, self.ehi = self.arf.get_indep()
 
-        # rmf_fold
-        return self.rmf.apply_rmf(src, *self.otherargs)
+        # Wavelength grid (angstroms)
+        self.lo, self.hi = DataPHA._hc/self.ehi, DataPHA._hc/self.elo
+
+        # Assume energy as default spectral coordinates
+        self.xlo, self.xhi = self.elo, self.ehi
+
+        # Used to rebin against finer or coarser energy grids
+        self.arfargs = ()
+
+
+    def startup(self):
+        self.model.startup()
+        CompositeModel.startup(self)
+
+
+    def teardown(self):
+        self.model.teardown()
+        CompositeModel.teardown(self)
+
+
+    def calc(self, p, x, xhi=None, *args, **kwargs):
+        raise NotImplementedError
+
+
+class RSPModel(CompositeModel, ArithmeticModel):
+    """
+    Base class for expressing RMF + ARF convolution in model expressions
+    """
+    def __init__(self, arf, rmf, model):
+        self.arf = arf
+        self.rmf = rmf
+        self.model = model
+
+        self.elo = None; self.ehi = None  # Energy space
+        self.lo = None; self.hi = None    # Wavelength space
+        self.xlo = None; self.xhi = None  # Current Spectral coordinates
+
+        # Used to rebin against finer or coarser energy grids
+        self.rmfargs = ()
+        self.arfargs = ()
+
+        # Logic for ArithmeticModel.__init__
+        self.pars = ()
+
+        CompositeModel.__init__(self, 'apply_rmf(apply_arf(%s))' % model.name,
+                                (model,))
+        self.filter()
+
+
+    def filter(self):
+        # Energy grid (keV), ARF grid breaks tie
+        self.elo, self.ehi = self.arf.get_indep()
+
+        # Wavelength grid (angstroms)
+        self.lo, self.hi = DataPHA._hc/self.ehi, DataPHA._hc/self.elo
+
+        # Assume energy as default spectral coordinates
+        self.xlo, self.xhi = self.elo, self.ehi
+
+        # Used to rebin against finer or coarser energy grids
+        self.rmfargs = ()
+        self.arfargs = ()
+
+
+    def startup(self):
+        self.model.startup()
+        CompositeModel.startup(self)
+
+
+    def teardown(self):
+        self.model.teardown()
+        CompositeModel.teardown(self)
+
+
+    def calc(self, p, x, xhi=None, *args, **kwargs):
+        raise NotImplementedError
+
+
+
+class RMFModelPHA(RMFModel):
+    """
+    RMF convolution model with associated PHA
+    """
+    def __init__(self, rmf, pha, model):
+        self.pha = pha
+        self._rmf = rmf # store a reference to original
+        RMFModel.__init__(self, rmf, model)
+
+
+    def filter(self):
+
+        RMFModel.filter(self)
+
+        pha = self.pha
+        # If PHA is a finer grid than RMF, evaluate model on PHA and
+        # rebin down to the granularity that the RMF expects.
+        if pha.bin_lo is not None and pha.bin_hi is not None:
+            bin_lo, bin_hi = pha.bin_lo, pha.bin_hi
+
+            # If PHA grid is in angstroms then convert to keV for
+            # consistency
+            if (bin_lo[0] > bin_lo[-1]) and (bin_hi[0] > bin_hi[-1]):
+                bin_lo, bin_hi = DataPHA._hc/pha.bin_hi, DataPHA._hc/pha.bin_lo
+
+            # FIXME: What about filtered option?? bin_lo, bin_hi are unfiltered??
+
+            # Compare disparate grids in energy space
+            self.rmfargs = ((self.elo, self.ehi), (bin_lo, bin_hi))
+
+            # FIXME: Compute on finer energy grid?  Assumes that PHA has
+            # finer grid than RMF
+            self.elo, self.ehi = bin_lo, bin_hi
+
+            # Wavelength grid (angstroms)
+            self.lo, self.hi = DataPHA._hc/self.ehi, DataPHA._hc/self.elo
+
+        # Assume energy as default spectral coordinates
+        self.xlo, self.xhi = self.elo, self.ehi
+        if self.pha.units == 'wavelength':
+            self.xlo, self.xhi = self.lo, self.hi
+
+
+    def startup(self):
+        rmf = self._rmf # original
+
+        # Create a view of original RMF
+        self.rmf = DataRMF(rmf.name, rmf.detchans, rmf.energ_lo, rmf.energ_hi,
+                            rmf.n_grp, rmf.f_chan, rmf.n_chan, rmf.matrix,
+                            rmf.offset, rmf.e_min, rmf.e_max, rmf.header)
+
+        # Filter the view for current fitting session
+        _notice_resp(self.pha.get_noticed_channels(), None, self.rmf)
+
+        self.filter()
+
+        # Assume energy as default spectral coordinates
+        self.xlo, self.xhi = self.elo, self.ehi
+        if self.pha.units == 'wavelength':
+            self.xlo, self.xhi = self.lo, self.hi
+
+        RMFModel.startup(self)
+
+
+    def teardown(self):
+        self.rmf = self._rmf
+
+        self.filter()
+        RMFModel.teardown(self)
 
 
     def calc(self, p, x, xhi=None, *args, **kwargs):
         # x is noticed/full channels here
 
-        pha = self.pha
-        user_grid = False
-        try:
-
-            if self._check_for_user_grid(x):
-                user_grid = True
-                self._startup_user_grid(x)
-
-            xlo, xhi = self.elo, self.ehi
-            if pha is not None and pha.units == 'wavelength':
-                xlo, xhi = self.lo, self.hi
-
-            vals = self._calc(p, xlo, xhi)
-            if self.mask is not None:
-                vals = vals[self.mask]
-
-        finally:
-            if user_grid:
-                self._teardown_user_grid()
-
-        return vals
+        src = self.model.calc(p, self.xlo, self.xhi)
+        return self.rmf.apply_rmf(src, *self.rmfargs)
 
 
-class ARFModel(CompositeModel, ArithmeticModel):
+class RMFModelNoPHA(RMFModel):
+    """
+    RMF convolution model without associated PHA
+    """
+    def __init__(self, rmf, model):
+        RMFModel.__init__(self, rmf, model)
 
-    def __init__(self, arf, model, pha=None, rmf=None):
-        _notice_resp(None, arf, rmf)
-        self.size = len(arf.specresp)
 
-        # Channel is needed for ARF only analysis,
-        # FIXME should grating PHA pass bin_lo, bin_hi instead
-        #       of channels?
-        self.channel = sao_arange(1, self.size)
+    def calc(self, p, x, xhi=None, *args, **kwargs):
+        # x is noticed/full channels here
 
-        self.rmf = rmf
-        self.arf = arf
+        # Always evaluates source model in keV!
+        src = self.model.calc(p, self.xlo, self.xhi)
+        return self.rmf.apply_rmf(src)
+
+
+class ARFModelPHA(ARFModel):
+    """
+    ARF convolution model with associated PHA
+    """
+    def __init__(self, arf, pha, model):
         self.pha = pha
-        self.elo = None; self.ehi = None  # Energy space
-        self.lo = None; self.hi = None    # Wavelength space
-
-        self.model = model
-        self.otherargs = None
-        self.otherkwargs = None
-        self.pars = ()
-        CompositeModel.__init__(self,  
-                                ('%s(%s)' % ('apply_arf', self.model.name)),
-                                (self.model,))
-        self._get_otherargs()
+        self._arf = arf # store a reference to original
+        ARFModel.__init__(self, arf, model)
 
 
-    def _get_otherargs(self):
-        elo, ehi = self.arf.get_indep()
-        args = ()
+    def filter(self):
 
-        # PHA <=> ARF case
+        ARFModel.filter(self)
+
         pha = self.pha
-        if (pha is not None and
-            pha.bin_lo is not None and pha.bin_hi is not None):
-            if len(pha.bin_lo) != len(self.arf.energ_lo):
-                args = pha._get_ebins(group=False)
+        # If PHA is a finer grid than ARF, evaluate model on PHA and
+        # rebin down to the granularity that the ARF expects.
+        if pha.bin_lo is not None and pha.bin_hi is not None:
+            bin_lo, bin_hi = pha.bin_lo, pha.bin_hi
 
-        # RMF <=> ARF case
-        rmf = self.rmf
-        if rmf is not None:
-            if len(self.arf.energ_lo) != len(rmf.energ_lo):
-                args = rmf.get_indep()
+            # If PHA grid is in angstroms then convert to keV for
+            # consistency
+            if (bin_lo[0] > bin_lo[-1]) and (bin_hi[0] > bin_hi[-1]):
+                bin_lo, bin_hi = DataPHA._hc/pha.bin_hi, DataPHA._hc/pha.bin_lo
 
-        self.elo, self.ehi = elo, ehi
-        self.lo, self.hi = DataPHA._hc/self.ehi, DataPHA._hc/self.elo
+            # FIXME: What about filtered option?? bin_lo, bin_hi are unfiltered??
 
-        # Compare malformed grids in energy space
-        self.otherargs = ((elo,ehi), args)
+            # Compare disparate grids in energy space
+            self.arfargs = ((self.elo, self.ehi), (bin_lo, bin_hi))
+
+            # FIXME: Assumes ARF grid is finest
+
+        # Assume energy as default spectral coordinates
+        self.xlo, self.xhi = self.elo, self.ehi
+        if self.pha.units == 'wavelength':
+            self.xlo, self.xhi = self.lo, self.hi
 
 
     def startup(self):
+        arf = self._arf # original
         pha = self.pha
-        if self.rmf is None and pha is not None:
-            self.channel = pha.get_noticed_channels()
-            self.size = len(self.channel)
-            if numpy.iterable(pha.mask):
-                self.arf.notice(pha.get_mask())
 
-        self._get_otherargs()
-        self.model.startup()
-        CompositeModel.startup(self)
+        # Create a view of original ARF
+        self.arf = DataARF(arf.name, arf.energ_lo, arf.energ_hi, arf.specresp,
+                           arf.bin_lo, arf.bin_hi, arf.exposure, arf.header)
+
+        # Filter the view for current fitting session
+        if numpy.iterable(pha.mask):
+            mask = pha.get_mask()
+            if len(mask) == len(self.arf.specresp):
+                self.arf.notice(mask)
+
+        self.filter()
+
+        # Assume energy as default spectral coordinates
+        self.xlo, self.xhi = self.elo, self.ehi
+        if pha.units == 'wavelength':
+            self.xlo, self.xhi = self.lo, self.hi
+
+        ARFModel.startup(self)
 
 
     def teardown(self):
+        self.arf = self._arf # restore original
+
+        self.filter()
+        ARFModel.teardown(self)
+
+
+    def calc(self, p, x, xhi=None, *args, **kwargs):
+        # x could be channels or x, xhi could be energy|wave
+
+        src = self.model.calc(p, self.xlo, self.xhi)
+        return self.arf.apply_arf(src, *self.arfargs)
+
+
+class ARFModelNoPHA(ARFModel):
+    """
+    ARF convolution model without associated PHA
+    """
+    def __init__(self, arf, model):
+        ARFModel.__init__(self, arf, model)
+
+
+    def calc(self, p, x, xhi=None, *args, **kwargs):
+        # x could be channels or x, xhi could be energy|wave
+
+        #if (xhi is not None and
+        #    x[0] > x[-1] and xhi[0] > xhi[-1]):
+        #    xlo, xhi = self.lo, self.hi
+        #else:
+
+        # Always evaluates source model in keV!
+        src = self.model.calc(p, self.xlo, self.xhi)
+        return self.arf.apply_arf(src)
+
+
+
+class RSPModelPHA(RSPModel):
+    """
+    RMF + ARF convolution model with associated PHA
+    """
+    def __init__(self, arf, rmf, pha, model):
+        self.pha = pha
+        self._arf = arf
+        self._rmf = rmf
+        RSPModel.__init__(self, arf, rmf, model)
+
+
+    def filter(self):
+
+        RSPModel.filter(self)
+
         pha = self.pha
-        self.size = len(self.arf.specresp)
-        self.channel = sao_arange(1, self.size)
-        if self.rmf is None and pha is not None:
-            if numpy.iterable(pha.mask):
-                self.arf.notice(None)
+        # If PHA is a finer grid than RMF, evaluate model on PHA and
+        # rebin down to the granularity that the RMF expects.
+        if pha.bin_lo is not None and pha.bin_hi is not None:
+            bin_lo, bin_hi = pha.bin_lo, pha.bin_hi
 
-        self._get_otherargs()
-        self.model.teardown()
-        CompositeModel.teardown(self)
+            # If PHA grid is in angstroms then convert to keV for
+            # consistency
+            if (bin_lo[0] > bin_lo[-1]) and (bin_hi[0] > bin_hi[-1]):
+                bin_lo, bin_hi = DataPHA._hc/pha.bin_hi, DataPHA._hc/pha.bin_lo
 
+            # FIXME: What about filtered option?? bin_lo, bin_hi are unfiltered??
 
-    def _check_for_user_grid(self, xlo, lo, hi=None):
+            # Compare disparate grids in energy space
+            self.arfargs = ((self.elo, self.ehi), (bin_lo, bin_hi))
 
-        # energy/wave
-        x = xlo
-        if hi is None:
-            # channel
-            x = self.channel
+            # FIXME: Assumes ARF grid is finest
 
-        return (self.rmf is None and
-                (self.size != len(lo) or
-                 not (sao_fcmp(x, lo, _tol)==0).all()))            
+        elo, ehi = self.rmf.get_indep()
+        # self.elo, self.ehi are from ARF
+        if len(elo) != len(self.elo) and len(ehi) != len(self.ehi):
 
+            self.rmfargs = ((elo, ehi), (self.elo, self.ehi))
 
-    def _startup_user_grid(self, elo, lo, hi=None):
-        # fit() never comes in here b/c it calls startup()
-
-        if self.rmf is None:
-            # energy!
-            x = elo
-            if hi is None:
-                # channel
-                x = self.channel
-
-            if hi is not None and lo[0] > lo[-1] and hi[0] > hi[-1]:
-                lo = DataPHA._hc/lo
-
-            mask = numpy.zeros(self.size, dtype=bool)
-            mask[numpy.searchsorted(x, lo)]=True
-            self.arf.notice(mask)
-            self._get_otherargs()
-            #print "startup_user_grid..."
+        # Assume energy as default spectral coordinates
+        self.xlo, self.xhi = self.elo, self.ehi
+        if self.pha.units == 'wavelength':
+            self.xlo, self.xhi = self.lo, self.hi
 
 
-    def _teardown_user_grid(self):
-        # fit() never comes in here b/c it calls startup()
+    def startup(self):
+        arf = self._arf
+        rmf = self._rmf
 
-        if self.rmf is None:
-            self.arf.notice(None)
-            self._get_otherargs()
-            #print "teardown_user_grid..."
+        # Create a view of original RMF
+        self.rmf = DataRMF(rmf.name, rmf.detchans, rmf.energ_lo, rmf.energ_hi,
+                           rmf.n_grp, rmf.f_chan, rmf.n_chan, rmf.matrix,
+                           rmf.offset, rmf.e_min, rmf.e_max, rmf.header)
+
+        # Create a view of original ARF
+        self.arf = DataARF(arf.name, arf.energ_lo, arf.energ_hi, arf.specresp,
+                           arf.bin_lo, arf.bin_hi, arf.exposure, arf.header)
+
+        # Filter the view for current fitting session
+        _notice_resp(self.pha.get_noticed_channels(), self.arf, self.rmf)
+
+        self.filter()
+
+        # Assume energy as default spectral coordinates
+        self.xlo, self.xhi = self.elo, self.ehi
+        if self.pha.units == 'wavelength':
+            self.xlo, self.xhi = self.lo, self.hi
+
+        RSPModel.startup(self)
 
 
-    def _calc(self, p, xlo, xhi):
-        # Evaluate source model on ARF energy/wave grid
-        # model.calc --> source model
-        src = self.model.calc(p, xlo, xhi)
+    def teardown(self):
+        self.arf = self._arf  # restore originals
+        self.rmf = self._rmf
 
-        # arf_fold
-        return self.arf.apply_arf(src, *self.otherargs)
+        self.filter()
+        RSPModel.teardown(self)
 
 
-    def calc(self, p, lo, hi=None, *args, **kwargs):
-        user_grid = False
-        try:
+    def calc(self, p, x, xhi=None, *args, **kwargs):
+        # x could be channels or x, xhi could be energy|wave
 
-            if self._check_for_user_grid(self.elo, lo, hi):
-                user_grid = True
-                self._startup_user_grid(self.elo, lo, hi)
+        src = self.model.calc(p, self.xlo, self.xhi)
+        src = self.arf.apply_arf(src, *self.arfargs)
+        return self.rmf.apply_rmf(src, *self.rmfargs)
 
-            # determine the working quantity from inputs
-            xlo, xhi = self.elo, self.ehi             # energy
-            if (self.pha is not None and self.pha.units == 'wavelength'):
-                xlo, xhi = self.lo, self.hi           # wave
-            elif (hi is not None and
-                  lo[0] > lo[-1] and hi[0] > hi[-1]):
-                xlo, xhi = self.lo, self.hi           # wave
 
-            vals = self._calc(p, xlo, xhi)
+class RSPModelNoPHA(RSPModel):
+    """
+    RMF + ARF convolution model without associated PHA
+    """
+    def __init__(self, arf, rmf, model):
+        RSPModel.__init__(self, arf, rmf, model)
 
-        finally:
-            if user_grid:
-                self._teardown_user_grid()
 
-        return vals
+    def calc(self, p, x, xhi=None, *args, **kwargs):
+        # x could be channels or x, xhi could be energy|wave
+
+        # Always evaluates source model in keV!
+        src = self.model.calc(p, self.xlo, self.xhi)
+        src = self.arf.apply_arf(src, *self.arfargs)
+        return self.rmf.apply_rmf(src, *self.rmfargs)
 
 
 class ARF1D(NoNewAttributesAfterInit):
 
     def __init__(self, arf, pha=None, rmf=None):
         self._arf = arf
-        self._rmf = rmf
         self._pha = pha
         NoNewAttributesAfterInit.__init__(self)
 
@@ -344,7 +509,7 @@ class ARF1D(NoNewAttributesAfterInit):
         except:
             pass
 
-        if name in ('_arf', '_arf', '_pha'):
+        if name in ('_arf', '_pha'):
             return self.__dict__[name]
 
         if arf is not None:
@@ -382,8 +547,12 @@ class ARF1D(NoNewAttributesAfterInit):
             model = pha.exposure * model
         elif arf.exposure is not None:
             model = arf.exposure * model
+        # FIXME: display a warning if exposure is None?
 
-        return ARFModel(arf, model, pha, self._rmf)
+        if pha is not None:
+            return ARFModelPHA(arf, pha, model)
+
+        return ARFModelNoPHA(arf, model)
 
 
 class RMF1D(NoNewAttributesAfterInit):
@@ -401,7 +570,7 @@ class RMF1D(NoNewAttributesAfterInit):
         except:
             pass
 
-        if name in ('_arf', '_rmf', '_pha'):
+        if name in ('_rmf', '_pha'):
             return self.__dict__[name]
 
         if rmf is not None:
@@ -433,42 +602,57 @@ class RMF1D(NoNewAttributesAfterInit):
 
     def __call__(self, model):
         arf = self._arf
+        rmf = self._rmf
         pha = self._pha
 
         # Automatically add exposure time to source model for RMF-only analysis
-        if type(model) not in (ARFModel,):
+        if type(model) not in (ARFModel,ARFModelPHA,ARFModelNoPHA):
 
             if pha is not None and pha.exposure is not None:
                 model = pha.exposure * model
             elif arf is not None and arf.exposure is not None:
                 model = arf.exposure * model
+        elif pha is not None and arf is not None:
+            # If model is an ARF?
+            # Replace RMF(ARF(SRC)) with RSP(SRC) for efficiency
+            return RSPModelPHA(arf, rmf, pha, model.model)
 
-        return RMFModel(self._rmf, model, pha, arf)
+        if pha is not None:
+            return RMFModelPHA(rmf, pha, model)
+
+        return RMFModelNoPHA(rmf, model)
 
 
 class Response1D(NoNewAttributesAfterInit):
 
     def __init__(self, pha):
         self.pha = pha
-        arf_data, rmf_data = self.pha.get_response()
-        if arf_data is None and rmf_data is None:
+        arf, rmf = pha.get_response()
+        if arf is None and rmf is None:
             raise DataErr('norsp', pha.name)
 
         NoNewAttributesAfterInit.__init__(self)
 
     def __call__(self, model):
         pha = self.pha
-        arf_data, rmf_data = self.pha.get_response()
+        arf, rmf = pha.get_response()
 
-        if arf_data is None and rmf_data is None:
-            raise DataErr('norsp', pha.name)
+        # Automatically add exposure time to source model
+        if pha.exposure is not None:
+            model = pha.exposure * model
+        elif arf is not None and arf.exposure is not None:
+            model = arf.exposure * model
 
-        if arf_data is not None:
-            model = ARF1D(arf_data, pha, rmf_data)(model)
-        if rmf_data is not None:
-            model = RMF1D(rmf_data, pha, arf_data)(model)
+        if arf is not None and rmf is not None:
+            return RSPModelPHA(arf, rmf, pha, model)
 
-        return model
+        if arf is not None:
+            return ARFModelPHA(arf, pha, model)
+
+        if rmf is not None:
+            return RMFModelPHA(rmf, pha, model)
+
+        raise DataErr('norsp', pha.name)
 
 
 class ResponseNestedModel(Model):
@@ -669,19 +853,20 @@ class PileupRMFModel(CompositeModel, ArithmeticModel):
         self.channel = sao_arange(1, rmf.detchans)  # sao_arange is inclusive
         self.mask = numpy.ones(rmf.detchans, dtype=bool)
         self.rmf = rmf
+
         self.elo, self.ehi = rmf.get_indep()
         self.lo, self.hi = DataPHA._hc/self.ehi, DataPHA._hc/self.elo
         self.model = model
         self.otherargs = None
         self.otherkwargs = None
         self.pars = ()
-        CompositeModel.__init__(self,           
+        CompositeModel.__init__(self,
                                 ('%s(%s)' % ('apply_rmf', self.model.name)),
                                 (self.model,))
 
     def startup(self):
         pha = self.pha
-        pha.notice_response(False)         
+        pha.notice_response(False)
         self.channel = pha.get_noticed_channels()
         self.mask = pha.get_mask()
         self.model.startup()
@@ -778,3 +963,54 @@ class PileupResponse1D(NoNewAttributesAfterInit):
         if rmf is not None:
             model = PileupRMFModel(rmf, model, pha)
         return model
+
+
+class PSFModel(_PSFModel):
+
+    def fold(self, data):
+        _PSFModel.fold(self, data)
+
+        # Set WCS coordinates of kernel data set to match source data set.
+        if (isinstance(data, DataIMG) and
+            isinstance(self.kernel, DataIMG)):
+            self.kernel.set_coord(data.coord)
+
+
+    def get_kernel(self, data, subkernel=True):
+
+        indep, dep, kshape, lo, hi = self._get_kernel_data(data, subkernel)
+
+        # Use kernel data set WCS if available
+        eqpos = getattr(self.kernel, 'eqpos', None)
+        sky   = getattr(self.kernel, 'sky', None)
+
+        # If kernel is a model, use WCS from data if available
+        if callable(self.kernel):
+            eqpos = getattr(data, 'eqpos', None)
+            sky   = getattr(data, 'sky', None)
+
+        dataset = None
+        ndim = len(kshape)
+        if ndim == 1:
+            dataset = Data1D('kernel', indep[0], dep)
+
+        elif ndim == 2:
+
+            # Edit WCS to reflect the subkernel extraction in
+            # physical coordinates.
+            if (subkernel and sky is not None and
+                lo is not None and hi is not None):
+
+                sky = WCS(sky.name, sky.type, sky.crval,
+                          sky.crpix - lo, sky.cdelt, sky.crota,
+                          sky.epoch, sky.equinox)
+
+                # FIXME: Support for WCS only (non-Chandra) coordinate
+                # transformations?
+
+            dataset = DataIMG('kernel', indep[0], indep[1], dep,
+                              kshape[::-1], sky=sky, eqpos=eqpos)
+        else:
+            raise PSFErr('ndim')
+
+        return dataset

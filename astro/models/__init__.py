@@ -4,7 +4,7 @@
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
-#  the Free Software Foundation; either version 2 of the License, or
+#  the Free Software Foundation; either version 3 of the License, or
 #  (at your option) any later version.
 #
 #  This program is distributed in the hope that it will be useful,
@@ -121,6 +121,11 @@ class Beta1D(ArithmeticModel):
         ArithmeticModel.__init__(self, name,
                                  (self.r0, self.beta, self.xpos, self.ampl))
 
+    def get_center(self):
+        return (self.xpos.val,)
+
+    def set_center(self, xpos, *args, **kwargs):
+        self.xpos.set(xpos)
 
     def guess(self, dep, *args, **kwargs):
         pos = get_position(dep, *args)
@@ -243,6 +248,11 @@ class Lorentz1D(ArithmeticModel):
         ArithmeticModel.__init__(self, name,
                                  (self.fwhm, self.pos, self.ampl))
 
+    def get_center(self):
+        return (self.pos.val,)
+
+    def set_center(self, pos, *args, **kwargs):
+        self.pos.set(pos)
 
     def guess(self, dep, *args, **kwargs):
         pos = get_position(dep, *args)
@@ -276,6 +286,11 @@ class NormBeta1D(ArithmeticModel):
         ArithmeticModel.__init__(self, name,
                                  (self.pos, self.width, self.index, self.ampl))
 
+    def get_center(self):
+        return (self.pos.val,)
+
+    def set_center(self, pos, *args, **kwargs):
+        self.pos.set(pos)
 
     def guess(self, dep, *args, **kwargs):
         ampl = guess_amplitude(dep, *args)
@@ -331,6 +346,12 @@ class Beta2D(ArithmeticModel):
                                   self.theta, self.ampl, self.alpha))
         self.cache = 0
 
+    def get_center(self):
+        return (self.xpos.val, self.ypos.val)
+
+    def set_center(self, xpos, ypos, *args, **kwargs):
+        self.xpos.set(xpos)
+        self.ypos.set(ypos)
 
     def guess(self, dep, *args, **kwargs):
         xpos, ypos = guess_position(dep, *args)
@@ -362,6 +383,12 @@ class DeVaucouleurs2D(ArithmeticModel):
                                   self.theta, self.ampl))
         self.cache = 0
 
+    def get_center(self):
+        return (self.xpos.val, self.ypos.val)
+
+    def set_center(self, xpos, ypos, *args, **kwargs):
+        self.xpos.set(xpos)
+        self.ypos.set(ypos)
 
     def guess(self, dep, *args, **kwargs):
         xpos, ypos = guess_position(dep, *args)
@@ -393,6 +420,12 @@ class HubbleReynolds(ArithmeticModel):
                                   self.theta, self.ampl))
         self.cache = 0
 
+    def get_center(self):
+        return (self.xpos.val, self.ypos.val)
+
+    def set_center(self, xpos, ypos, *args, **kwargs):
+        self.xpos.set(xpos)
+        self.ypos.set(ypos)
 
     def guess(self, dep, *args, **kwargs):
         xpos, ypos = guess_position(dep, *args)
@@ -424,6 +457,13 @@ class Lorentz2D(ArithmeticModel):
                                  (self.fwhm, self.xpos, self.ypos, self.ellip,
                                   self.theta, self.ampl))
         self.cache = 0
+
+    def get_center(self):
+        return (self.xpos.val, self.ypos.val)
+
+    def set_center(self, xpos, ypos, *args, **kwargs):
+        self.xpos.set(xpos)
+        self.ypos.set(ypos)
 
     def guess(self, dep, *args, **kwargs):
         xpos, ypos = guess_position(dep, *args)

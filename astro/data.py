@@ -4,7 +4,7 @@
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
-#  the Free Software Foundation; either version 2 of the License, or
+#  the Free Software Foundation; either version 3 of the License, or
 #  (at your option) any later version.
 #
 #  This program is distributed in the hope that it will be useful,
@@ -24,10 +24,10 @@ Classes for storing, inspecting, and manipulating astronomical data sets
 from itertools import izip
 import os.path
 import numpy
-from sherpa.data import BaseData, Data1DInt, Data2D, Data1D, DataND
+from sherpa.data import BaseData, Data1DInt, Data2D, DataND
 from sherpa.utils.err import DataErr, ImportErr
 from sherpa.utils import SherpaFloat, pad_bounding_box, interpolate, \
-    create_expr, bool_cast, rebin, filter_bins
+    create_expr, parse_expr, bool_cast, rebin, filter_bins
 from sherpa.astro.utils import *
 
 import logging
@@ -194,6 +194,9 @@ class DataRMF(Data1DInt):
             if pha != () and len(pha[0]) > len(rmf[0]):
                 src = rebin(src, pha[0], pha[1], rmf[0], rmf[1])
 
+        if len(src) != len(self._lo):
+            raise TypeError("Mismatched filter between ARF and RMF or PHA and RMF")
+
         return rmf_fold(src, self._grp, self._fch, self._nch, self._rsp,
                         self.detchans, self.offset)
 
@@ -273,8 +276,8 @@ class DataPHA(Data1DInt):
             units = 'channel'
 
         if units.startswith('chan'):
-            self._to_channel   = (lambda x: x)
-            self._from_channel = (lambda x: x)
+            self._to_channel   = (lambda x, group=True, response_id=None: x)
+            self._from_channel = (lambda x, group=True, response_id=None: x)
             units = 'channel'
 
         elif units.startswith('ener'):
@@ -678,6 +681,31 @@ class DataPHA(Data1DInt):
             return None
         return self.sum_background_data(lambda key, bkg: 1.)
 
+    def _check_scale(self, scale, group=True, filter=False):
+        if numpy.isscalar(scale) and scale <= 0.0:
+            scale = 1.0
+        elif numpy.iterable(scale):
+            scale = numpy.asarray(scale, dtype=SherpaFloat)
+            if group:
+                if filter:
+                    scale = self.apply_filter(scale, self._middle)
+                else:
+                    scale = self.apply_grouping(scale, self._middle)
+
+            scale[scale<=0.0] = 1.0
+        return scale
+
+    def get_backscal(self, group=True, filter=False):
+        backscal = self.backscal
+        if backscal is not None:
+            backscal = self._check_scale(backscal, group, filter)
+        return backscal
+
+    def get_areascal(self, group=True, filter=False):
+        areascal = self.areascal
+        if areascal is not None:
+            areascal = self._check_scale(areascal, group, filter)
+        return areascal
 
     def apply_filter(self, data, groupfunc=numpy.sum):
         """
@@ -768,11 +796,25 @@ class DataPHA(Data1DInt):
             if kwargs[key] is None:
                 kwargs.pop(key)
 
+
+        #old_filter = self.get_filter(group=False)
+        old_filter = self.get_filter(group=True)
+        do_notice = numpy.iterable(self.mask)
+
         self.grouping, self.quality = group_func(*args, **kwargs)
         self.group()
         self._original_groups = False
-        self.notice()
-        warning('grouping flags have changed, noticing all bins')
+
+        if do_notice:
+            # self.group() above has cleared the filter if applicable
+            # No, that just sets a flag.  So manually clear filter
+            # here
+            if self.mask is not None:
+                self.notice()
+            for vals in parse_expr(old_filter):
+                self.notice(*vals)
+
+        #warning('grouping flags have changed, noticing all bins')
 
     # Have to move this check here; as formerly written, reference
     # to pygroup functions happened *before* checking groupstatus,
@@ -836,13 +878,16 @@ class DataPHA(Data1DInt):
             bkg = self.get_background(key)
             bdata = get_bdata_func(key, bkg)
 
-            if bkg.backscal is not None:
-                if numpy.isscalar(bkg.backscal) and bkg.backscal == 0.0:
-                    bkg.backscal = 1.0
-                if not numpy.isscalar(bkg.backscal):
-                    bad = list(numpy.where(bkg.backscal==0.0)).pop(0)
-                    bkg.backscal[bad] = 1.0
-                bdata = bdata / bkg.backscal
+            backscal = bkg.backscal
+            if backscal is not None:
+                backscal = self._check_scale(backscal, group=False)
+                bdata = bdata / backscal
+
+            areascal = bkg.areascal
+            if areascal is not None:
+                areascal = self._check_scale(areascal, group=False)
+                bdata = bdata / areascal
+
             if bkg.exposure is not None:
                 bdata = bdata / bkg.exposure
 
@@ -855,8 +900,16 @@ class DataPHA(Data1DInt):
         else:
             bkgsum = sum(bdata_list)
 
-        if self.backscal is not None:
-            bkgsum = self.backscal * bkgsum
+        backscal = self.backscal
+        if backscal is not None:
+            backscal = self._check_scale(backscal, group=False)
+            bkgsum = backscal * bkgsum
+
+        areascal = self.areascal
+        if areascal is not None:
+            areascal = self._check_scale(areascal, group=False)
+            bkgsum = areascal * bkgsum
+
         if self.exposure is not None:
             bkgsum = self.exposure * bkgsum
 
@@ -878,6 +931,15 @@ class DataPHA(Data1DInt):
         if filter:
             dep = self.apply_filter(dep)
         return dep
+
+    def set_dep(self, val):
+        dep = None
+        if numpy.iterable(val):
+            dep = numpy.asarray(val, SherpaFloat)
+        else:
+            val = SherpaFloat(val)
+            dep = numpy.array([val]*len(self.get_indep()[0]))
+        setattr(self, 'counts', dep)
 
     def get_staterror(self, filter=False, staterrfunc=None):
         staterr = self.staterror
@@ -937,19 +999,14 @@ class DataPHA(Data1DInt):
 
                 bksl = bkg.backscal
                 if bksl is not None:
-                    if numpy.isscalar(bksl) and bksl == 0.0:
-                        bksl = 1.0
-                    if not numpy.isscalar(bksl):
-                        if filter:
-                            bksl = self.apply_filter(bksl, self._middle)
-                        else:
-                            bksl = self.apply_grouping(bksl, self._middle)
-                            
-                        bad = list(numpy.where(bksl == 0.0)).pop(0)
-                        bksl[bad] = 1.0
-
+                    bksl = self._check_scale(bksl, filter=filter)
                     berr = berr / bksl
-                    
+                
+                area = bkg.areascal
+                if area is not None:
+                    area = self._check_scale(area, filter=filter)
+                    berr = berr / area
+
                 if bkg.exposure is not None:
                     berr = berr / bkg.exposure
 
@@ -963,16 +1020,16 @@ class DataPHA(Data1DInt):
             else:
                 bkgsum = sum(bkg_staterr_list)
 
-            if self.backscal is not None:
-                if numpy.isscalar(self.backscal):
-                    bkgsum = (self.backscal * self.backscal) * bkgsum
-                else:
-                    if filter:
-                        bscal = self.apply_filter(self.backscal, self._middle)
-                    else:
-                        bscal = self.apply_grouping(self.backscal,self._middle)
-                    bkgsum = (bscal * bscal) * bkgsum
-                    
+            bscal = self.backscal
+            if bscal is not None:
+                bscal = self._check_scale(bscal, filter=filter)
+                bkgsum = (bscal * bscal) * bkgsum
+
+            area = self.areascal
+            if area is not None:
+                area = self._check_scale(area, filter=filter)
+                bkgsum = (area * area) * bkgsum
+
             if self.exposure is not None:
                 bkgsum = (self.exposure * self.exposure) * bkgsum
 
@@ -1012,8 +1069,8 @@ class DataPHA(Data1DInt):
             xlabel += ' (keV)'
         elif self.units == 'wavelength':
             xlabel += ' (Angstrom)'
-        elif self.units == 'channel' and self.grouped:
-            xlabel = 'Group Number'
+        #elif self.units == 'channel' and self.grouped:
+        #    xlabel = 'Group Number'
         return xlabel
 
 
@@ -1043,27 +1100,34 @@ class DataPHA(Data1DInt):
 
         if self.rate and self.exposure:
             val /= self.exposure
+            areascal = self.areascal
+            if areascal is not None:
+                areascal = self._check_scale(areascal, filter=filter)
+                val /= areascal
 
-        if self.units == 'channel':
-            for ii in range(self.plot_fac):
-                # no need to pass the resp_id here, 'channels' are the same?
-                val *= self.apply_filter(self.get_x(), self._make_groups)
-            return val
+        if self.grouped or self.rate:
 
-        if self.rate:
-            elo, ehi = self._get_ebins(response_id)
+            if self.units != 'channel':
+                elo, ehi = self._get_ebins(response_id, group=False)
+            else:
+                elo, ehi = (self.channel, self.channel+1.)
+
             if filter:
                 # If we apply a filter, make sure that
                 # ebins are ungrouped before applying
                 # the filter.
-                elo, ehi = self._get_ebins(response_id, group=False)
                 elo = self.apply_filter(elo, self._min)
                 ehi = self.apply_filter(ehi, self._max)
+            elif self.grouped:
+                elo = self.apply_grouping(elo, self._min)
+                ehi = self.apply_grouping(ehi, self._max)
 
             if self.units == 'energy':
                 ebin = ehi - elo
             elif self.units == 'wavelength':
                 ebin = self._hc/elo - self._hc/ehi
+            elif self.units == 'channel':
+                ebin = ehi - elo
             else:
                 raise DataErr("bad", "quantity", self.units)
 
@@ -1126,11 +1190,13 @@ class DataPHA(Data1DInt):
         if self.rate and self.exposure:
             ylabel += '/sec'
 
-        if self.rate:
+        if self.rate or self.grouped:
             if self.units == 'energy':
                 ylabel += '/keV'
             elif self.units == 'wavelength':
                 ylabel += '/Angstrom'
+            elif self.units == 'channel':
+                ylabel += '/channel'
 
         if self.plot_fac:
             ylabel += ' X %s^%s' % (self.units.capitalize(), str(self.plot_fac))
@@ -1191,14 +1257,20 @@ class DataPHA(Data1DInt):
             return 'No noticed channels'
         return create_expr(chans, format='%i')
 
-    def get_filter(self, format = '%.12f', delim=':'):
+    def get_filter(self, group=True, format = '%.12f', delim=':'):
         """  
         Integrated values returned are measured from center of bin
         """
         if self.mask is False:
             return 'No noticed bins'
-        x = self.apply_filter(self.channel, self._make_groups)
-        x = self._from_channel(x)  # knows the units underneath
+
+        x = self.get_noticed_channels() # ungrouped noticed channels
+        if group:
+            # grouped noticed channels
+            x = self.apply_filter(self.channel, self._make_groups)
+
+        # convert channels to appropriate quantity if necessary.
+        x = self._from_channel(x, group=group)  # knows the units underneath
 
         if self.units in ('channel',):
             format = '%i'            
@@ -1289,17 +1361,7 @@ class DataPHA(Data1DInt):
                 self.get_syserror(True))
 
     def to_plot(self, yfunc=None, staterrfunc=None, response_id=None):
-        x = []
-        # This is a little gross.  If the data space is channels,
-        # just convert channels to groups.  Otherwise, let the
-        # x-value be the middle of the bins.
-        if self.units != 'channel':
-            x = self.apply_filter(self.get_x(response_id=response_id),
-                                  self._middle)
-        else:
-            x = self.apply_filter(self.get_x(response_id=response_id),
-                                  self._make_groups)
-        return (x,
+        return (self.apply_filter(self.get_x(response_id=response_id), self._middle),
                 self.get_y(True, yfunc, response_id=response_id),
                 self.get_yerr(True, staterrfunc, response_id=response_id),
                 self.get_xerr(True, response_id=response_id),

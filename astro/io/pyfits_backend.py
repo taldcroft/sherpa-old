@@ -1,10 +1,11 @@
+#!/usr/bin/env python
 # 
-#  Copyright (C) 2008  Smithsonian Astrophysical Observatory
+#  Copyright (C) 2011  Smithsonian Astrophysical Observatory
 #
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
-#  the Free Software Foundation; either version 2 of the License, or
+#  the Free Software Foundation; either version 3 of the License, or
 #  (at your option) any later version.
 #
 #  This program is distributed in the hope that it will be useful,
@@ -16,6 +17,7 @@
 #  with this program; if not, write to the Free Software Foundation, Inc.,
 #  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
+
 
 import numpy
 import pyfits
@@ -47,7 +49,11 @@ try:
     _VLF = pyfits.NP_pyfits._VLF
 except AttributeError:
     # pyfits-2.3.1 support
-    _VLF = pyfits.core._VLF
+    try:
+        _VLF = pyfits.core._VLF
+    except AttributeError:
+        # pyfits-3.0 support
+        _VLF = pyfits.column._VLF
 
 
 def _has_hdu(hdulist, id):
@@ -58,21 +64,24 @@ def _has_hdu(hdulist, id):
     return True
 
 
+def _has_key(hdu, name):
+    #return hdu.header.has_key(name)
+    return name in hdu.header
+
+
 def _try_key(hdu, name, fix_type=False, dtype=SherpaFloat):
-    if hdu.header.has_key(name):
+    if _has_key(hdu, name):
         key = hdu.header[name]
 
         if str(key).find('none') != -1:
             return None
-        
+
         if fix_type:
             key = dtype(key)
         return key
-    
+
     return None
 
-def _has_key(hdu, name):
-    return hdu.header.has_key(name)
 
 def _require_key(hdu, name, fix_type=False, dtype=SherpaFloat):
     key = _try_key(hdu, name, fix_type, dtype)
@@ -146,13 +155,13 @@ def _try_vec(hdu, name, size=2, dtype=SherpaFloat, fix_type=False):
         col = numpy.concatenate([numpy.asarray(row) for row in col])
     else:
         col = numpy.asarray(col)
-    
+
     if fix_type:
         col = col.astype(dtype)
 
     if col is None:
         return numpy.array([None]*size)
-    
+
     return col
 
 def _require_col(hdu, name, dtype=SherpaFloat, fix_type=False):
@@ -186,12 +195,54 @@ def _try_vec_or_key(hdu, name, size, dtype=SherpaFloat, fix_type=False):
     return numpy.array([_try_key(hdu, name, fix_type, dtype)]*size)
 
 
+
+## Read Functions ##
+
+def read_table_blocks(arg, make_copy=False):
+
+    filename = ''
+    hdus = None
+    if type(arg) is pyfits.HDUList:
+        filename = arg[0]._file.name
+        hdus = arg
+    elif type(arg) in (str, unicode, numpy.str_) and is_binary_file(arg):
+        filename = arg
+        hdus = pyfits.open(arg)
+    else:
+        raise IOErr('badfile', arg, "a binary FITS table or a PyFITS.BinTableHDU list")
+
+    cols = {}
+    hdr = {}
+
+    for ii, hdu in enumerate(hdus):
+        blockidx = ii+1
+
+        hdr[blockidx] = {}
+        header = hdu.header
+        if header is not None:
+            for key in header.keys():
+                hdr[blockidx][key] = header[key]
+
+        # skip over primary, hdu.data is None
+
+        cols[blockidx] = {}
+        recarray = hdu.data
+        if recarray is not None:
+            for colname in recarray.names:
+                cols[blockidx][colname] = recarray[colname]
+
+    return filename, cols, hdr
+
+
+
+
+
 def get_header_data( arg, blockname=None, hdrkeys=None ):
 
     filename = ''
     if type(arg) == str and is_binary_file(arg):
         tbl = pyfits.open(arg)
-        filename = arg        
+        filename = arg
     elif ( (type(arg) is pyfits.HDUList) and
            (len(arg) > 0) and
            (arg[0].__class__ is pyfits.PrimaryHDU) ):
@@ -236,7 +287,7 @@ def get_column_data( *args ):
     # args is passed as type list
     if len(args) == 0:
         raise IOErr('noarrays')
-    
+
     cols = []
     for arg in args:
         if not (type(arg) in (numpy.ndarray, list, tuple) or arg is None):
@@ -248,7 +299,7 @@ def get_column_data( *args ):
         else:
             cols.append( arg )
 
-    return cols    
+    return cols
 
 def get_table_data(arg, ncols=1, colkeys=None, make_copy=False, fix_type=False,
                    blockname = None, hdrkeys=None):
@@ -260,7 +311,7 @@ def get_table_data(arg, ncols=1, colkeys=None, make_copy=False, fix_type=False,
     filename = ''
     if type(arg) == str and is_binary_file(arg):
         tbl = pyfits.open(arg)
-        filename = arg        
+        filename = arg
     elif ( (type(arg) is pyfits.HDUList) and
            (len(arg) > 0) and
            (arg[0].__class__ is pyfits.PrimaryHDU) ):
@@ -283,7 +334,7 @@ def get_table_data(arg, ncols=1, colkeys=None, make_copy=False, fix_type=False,
                 break
 
         else:
-            raise IOErr('badext', filename)        
+            raise IOErr('badext', filename)
 
         cnames = list(hdu.columns.names)
 
@@ -316,13 +367,13 @@ def get_table_data(arg, ncols=1, colkeys=None, make_copy=False, fix_type=False,
 def get_image_data(arg, make_copy=False):
     """
     get_image_data( filename [, make_copy=False ])
-    
+
     get_image_data( [PrimaryHDU] [, make_copy=False ])
     """
     filename = ''
     if type(arg) == str and is_binary_file(arg):
         hdu = pyfits.open(arg)
-        filename = arg        
+        filename = arg
     elif ( (type(arg) is pyfits.HDUList) and
            (len(arg) > 0 ) and
            (arg[0].__class__ is pyfits.PrimaryHDU) ):
@@ -332,38 +383,38 @@ def get_image_data(arg, make_copy=False):
         raise IOErr('badfile', arg, "a binary FITS file or a PyFITS.PrimaryHDU list")
 
 #   FITS uses logical-to-world where we use physical-to-world.
-#   For all transforms, update their physical-to-world        
-#   values from their logical-to-world values.                
-#   Find the matching physical transform                      
-#      (same axis no, but sub = 'P' )                         
-#   and use it for the update.                                
-#   Physical tfms themselves do not get updated.              
-#                                                             
-#  Fill the physical-to-world transform given the             
-#  logical-to-world and the associated logical-to-physical.   
-#      W = wv + wd * ( P - wp )                               
-#      P = pv + pd * ( L - pp )                               
-#      W = lv + ld * ( L - lp )                               
-# Then                                                        
-#      L = pp + ( P - pv ) / pd                               
-# so   W = lv + ld * ( pp + (P-pv)/pd - lp )                  
-#        = lv + ( ld / pd ) * ( P - [ pv +  (lp-pp)*pd ] )    
-# Hence                                                       
-#      wv = lv                                                
-#      wd = ld / pd                                           
-#      wp = pv + ( lp - pp ) * pd                             
-#                                                             
-#  EG suppose phys-to-world is                                
-#         W =  1000 + 2.0 * ( P - 4.0 )                       
-#  and we bin and scale to generate a logical-to-phys of      
-#         P =  20 + 4.0 * ( L - 10 )                          
-#  Then                                                       
-#         W = 1000 + 2.0 * ( (20-4) - 4 * 10 ) + 2 * 4 $      
-#                                                             
+#   For all transforms, update their physical-to-world
+#   values from their logical-to-world values.
+#   Find the matching physical transform
+#      (same axis no, but sub = 'P' )
+#   and use it for the update.
+#   Physical tfms themselves do not get updated.
+#
+#  Fill the physical-to-world transform given the
+#  logical-to-world and the associated logical-to-physical.
+#      W = wv + wd * ( P - wp )
+#      P = pv + pd * ( L - pp )
+#      W = lv + ld * ( L - lp )
+# Then
+#      L = pp + ( P - pv ) / pd
+# so   W = lv + ld * ( pp + (P-pv)/pd - lp )
+#        = lv + ( ld / pd ) * ( P - [ pv +  (lp-pp)*pd ] )
+# Hence
+#      wv = lv
+#      wd = ld / pd
+#      wp = pv + ( lp - pp ) * pd
 
-    try: 
+#  EG suppose phys-to-world is
+#         W =  1000 + 2.0 * ( P - 4.0 )
+#  and we bin and scale to generate a logical-to-phys of
+#         P =  20 + 4.0 * ( L - 10 )
+#  Then
+#         W = 1000 + 2.0 * ( (20-4) - 4 * 10 ) + 2 * 4 $
+#
+
+    try:
         data = {}
-        
+
         img = hdu[0]
         if hdu[0].data is None:
             img = hdu[1]
@@ -426,7 +477,7 @@ def get_arf_data(arg, make_copy=False):
     filename = ''
     if type(arg) == str:
         arf = pyfits.open(arg)
-        filename = arg        
+        filename = arg
     elif ( (type(arg) is pyfits.HDUList) and
            (len(arg) > 0) and
            (arg[0].__class__ is pyfits.PrimaryHDU) ):
@@ -453,7 +504,7 @@ def get_arf_data(arg, make_copy=False):
 
         data['energ_lo'] = _require_col(hdu, 'ENERG_LO', fix_type=True)
         data['energ_hi'] = _require_col(hdu, 'ENERG_HI', fix_type=True)
-        data['specresp'] = _require_col(hdu, 'SPECRESP')
+        data['specresp'] = _require_col(hdu, 'SPECRESP', fix_type=True)
         data['bin_lo']   = _try_col(hdu, 'BIN_LO', fix_type=True)
         data['bin_hi']   = _try_col(hdu, 'BIN_HI', fix_type=True)
         data['header']     = _get_meta_data(hdu)
@@ -468,13 +519,13 @@ def get_arf_data(arg, make_copy=False):
 def get_rmf_data(arg, make_copy=False):
     """
     get_rmf_data( filename [, make_copy=False ])
-    
+
     get_rmf_data( [PrimaryHDU, BinTableHDU] [, make_copy=False ])
     """
     filename = ''
     if type(arg) == str:
         rmf = pyfits.open(arg)
-        filename = arg        
+        filename = arg
     elif ( (type(arg) is pyfits.HDUList) and
            (len(arg) > 0) and
            (arg[0].__class__ is pyfits.PrimaryHDU) ):
@@ -534,7 +585,7 @@ def get_rmf_data(arg, make_copy=False):
             tlmin = _try_key(hdu, 'TLMIN'+str(chan_col), True, SherpaUInt)
             if tlmin is not None:
                 data['offset'] = tlmin
-            
+
         else:
             data['e_min'] = None
             data['e_max'] = None
@@ -549,7 +600,7 @@ def get_rmf_data(arg, make_copy=False):
             for i in xrange(grp):
                 f_chan.append(fch[i])
                 n_chan.append(nch[i])
-                
+
         data['f_chan'] = numpy.asarray(f_chan, SherpaUInt)
         data['n_chan'] = numpy.asarray(n_chan, SherpaUInt)
     else:
@@ -566,14 +617,14 @@ def get_rmf_data(arg, make_copy=False):
 def get_pha_data(arg, make_copy=False, use_background=False):
     """
     get_pha_data( filename [, make_copy=False [, use_background=False[])
-    
+
     get_pha_data( [PrimaryHDU, BinTableHDU] [, make_copy=False
                   [, use_background=False]])
     """
     filename = ''
     if type(arg) == str and is_binary_file(arg):
         pha = pyfits.open(arg)
-        filename = arg        
+        filename = arg
     elif ( (type(arg) is pyfits.HDUList) and
            (len(arg) > 0) and
            (arg[0].__class__ is pyfits.PrimaryHDU) ):
@@ -603,28 +654,28 @@ def get_pha_data(arg, make_copy=False, use_background=False):
 
         if _try_col(hdu, 'SPEC_NUM') is None:
             data = {}
-            
+
             # Keywords
             data['exposure'] = _try_key(hdu, 'EXPOSURE', True, SherpaFloat)
             #data['poisserr'] = _try_key(hdu, 'POISSERR', True, bool)
             data['backfile'] = _try_key(hdu, 'BACKFILE')
             data['arffile']  = _try_key(hdu, 'ANCRFILE')
             data['rmffile']  = _try_key(hdu, 'RESPFILE')
-            
+
             # Keywords or columns
             data['backscal'] = _try_col_or_key(hdu, 'BACKSCAL', fix_type=True)
             data['backscup'] = _try_col_or_key(hdu, 'BACKSCUP', fix_type=True)
             data['backscdn'] = _try_col_or_key(hdu, 'BACKSCDN', fix_type=True)
             data['areascal'] = _try_col_or_key(hdu, 'AREASCAL', fix_type=True)
-            
+
             # Columns
             data['channel']         = _require_col(hdu, 'CHANNEL', fix_type=True)
             #Make sure channel numbers not indices
             chan = list(hdu.columns.names).index('CHANNEL') + 1
             tlmin = _try_key(hdu, 'TLMIN'+str(chan), True, SherpaUInt)
-            if (tlmin is not None) and tlmin == 0:
+            if int(data['channel'][0]) == 0 or ((tlmin is not None) and tlmin == 0):
                 data['channel'] = data['channel']+1
-            
+
             data['counts']      = _try_col(hdu, 'COUNTS', fix_type=True)
             if data['counts'] is None:
                 data['counts']  = _require_col(hdu, 'RATE', fix_type=True) * data['exposure']
@@ -646,7 +697,7 @@ def get_pha_data(arg, make_copy=False, use_background=False):
             if data['syserror'] is not None:
                 # SYS_ERR is the fractional systematic error
                 data['syserror'] = data['syserror'] * data['counts']
-        
+
             datasets.append(data)
 
         else:
@@ -671,6 +722,17 @@ def get_pha_data(arg, make_copy=False, use_background=False):
 
             # Columns
             channel         = _require_vec(hdu, 'CHANNEL', num, fix_type=True)
+
+            #Make sure channel numbers not indices
+            chan = list(hdu.columns.names).index('CHANNEL') + 1
+            tlmin = _try_key(hdu, 'TLMIN'+str(chan), True, SherpaUInt)
+            
+            for ii in range(num):
+                if int(channel[ii][0]) == 0:
+                    channel[ii] += 1
+            #if ((tlmin is not None) and tlmin == 0) or int(channel[0]) == 0:
+            #    channel += 1
+
             counts =  _try_vec(hdu, 'COUNTS', num, fix_type=True)
             if None in counts:
                 counts =  _require_vec(hdu, 'RATE', num, fix_type=True) * data['exposure']
@@ -760,7 +822,7 @@ def set_table_data(filename, data, col_names, hdr=None, hdrnames=None,
     col_names = list(col_names)
     col_names.remove("name")
     #hdrlist = pyfits.CardList()
-    
+
     #for name in ['exposure','backscal', 'areascal']:
     #    hdrlist.append(pyfits.Card(key=name.upper(),
     #                   value=data[name]))
@@ -797,7 +859,7 @@ def set_pha_data(filename, data, col_names, header=None,
         raise IOErr("filefound", filename)
 
     hdrlist = pyfits.CardList()
-    
+
     for key in header.keys():
         if header[key] is None:
             continue
@@ -833,7 +895,7 @@ def set_image_data(filename, data, header, ascii=False, clobber=False,
 
     if not packup and os.path.isfile(filename) and not clobber:
         raise IOErr("filefound", filename)
-    
+
     if ascii:
         set_arrays(filename, [data['pixels'].ravel()],
                    ascii=ascii, clobber=clobber)

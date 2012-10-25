@@ -4,7 +4,7 @@
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
-#  the Free Software Foundation; either version 2 of the License, or
+#  the Free Software Foundation; either version 3 of the License, or
 #  (at your option) any later version.
 #
 #  This program is distributed in the hope that it will be useful,
@@ -35,7 +35,8 @@ __all__ = ('clear_window','point','plot','histo','contour','set_subplot','init',
            'get_ratio_contour_defaults','get_confid_plot_defaults',
            'get_confid_contour_defaults', 'set_window_redraw', 'set_jointplot',
            'get_model_histo_defaults', 'get_histo_defaults',
-           'get_component_plot_defaults','get_component_histo_defaults')
+           'get_component_plot_defaults','get_component_histo_defaults', 
+           'vline', 'hline', 'get_scatter_plot_defaults', 'get_cdf_plot_defaults')
 
 def init():
     pass
@@ -251,6 +252,8 @@ def plot(x, y, yerr=None, xerr=None, title=None, xlabel=None, ylabel=None,
    
 def contour(x0, x1, y, levels=None, title=None, xlabel=None, ylabel=None,
             overcontour=False, clearwindow=True,
+            xlog=False,
+            ylog=False,
             linewidths=None,
             colors=None):
     
@@ -267,6 +270,12 @@ def contour(x0, x1, y, levels=None, title=None, xlabel=None, ylabel=None,
             axes.set_xlabel(xlabel)
         if ylabel:
             axes.set_ylabel(ylabel)
+
+        xscale = _choose(xlog, 'log', 'linear')
+        yscale = _choose(ylog, 'log', 'linear')
+        axes.set_xscale(xscale)
+        axes.set_yscale(yscale)
+
 
     x0 = numpy.unique(x0)
     x1 = numpy.unique(x1)
@@ -420,3 +429,12 @@ get_resid_contour_defaults = get_data_contour_defaults
 get_ratio_contour_defaults = get_data_contour_defaults
 get_component_plot_defaults = get_model_plot_defaults
 get_component_histo_defaults = get_model_histo_defaults
+
+def get_cdf_plot_defaults():
+    d = get_model_plot_defaults()
+    d['linecolor'] = 'red'
+    return d
+
+def get_scatter_plot_defaults():
+    d = get_data_plot_defaults()
+    return d

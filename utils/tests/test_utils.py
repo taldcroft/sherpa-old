@@ -4,7 +4,7 @@
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
-#  the Free Software Foundation; either version 2 of the License, or
+#  the Free Software Foundation; either version 3 of the License, or
 #  (at your option) any later version.
 #
 #  This program is distributed in the hope that it will be useful,
@@ -146,6 +146,48 @@ class test_utils(SherpaTestCase):
         self.assertRaises(TypeError, poisson_noise, [1, 2, 'ham'])
 
 
+    def test_neville( self ):
+        func = numpy.exp
+        tol = 1.0e-6
+        num = 10
+        x = []
+        y = []
+        for ii in xrange( num ):
+            x.append( ii / float( num ) )
+            y.append( func( x[ ii ] ) )
+        xx = numpy.array( x )
+        yy = numpy.array( y )
+        for ii in xrange( num ):
+            tmp = 1.01 * ( ii/ float( num ) )
+            answer = func( tmp )
+            val = neville( tmp, xx, yy )
+            self.assert_( Knuth_close( answer, val, tol ) )
+
+    def test_neville2d( self ):
+        funcx = numpy.sin
+        funcy = numpy.exp
+        nrow = 10
+        ncol = 10
+        tol = 1.0e-4
+        x = numpy.zeros( (nrow,) )
+        y = numpy.zeros( (ncol,) )
+        fval = numpy.empty( ( nrow, ncol ) )
+        row_tmp = numpy.pi / nrow
+        col_tmp = 1.0 / float( ncol )
+        for row in xrange( nrow ):
+            x[ row ] = ( row + 1.0 ) * row_tmp
+            for col in xrange( ncol ):
+                y[ col ] = ( col + 1.0 ) / float( ncol )
+                fval[ row ][ col ] = funcx( x[ row ] ) * funcy( y[ col ] )
+
+        for row in xrange( ncol ):
+            xx = ( -0.1 + ( row + 1.0 ) / float( nrow ) ) * numpy.pi
+            for col in xrange( 4 ):
+                yy = -0.1 +( col + 1.0 )/ float( ncol )
+                answer = funcx( xx ) * funcy( yy )
+                val = neville2d( xx, yy, x, y, fval )
+                self.assert_( Knuth_close( answer, val, tol ) )
+    
     def test_parallel_map(self):
 
         ncpus = 1

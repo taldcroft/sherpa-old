@@ -5,7 +5,7 @@
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
-#  the Free Software Foundation; either version 2 of the License, or
+#  the Free Software Foundation; either version 3 of the License, or
 #  (at your option) any later version.
 #
 #  This program is distributed in the hope that it will be useful,
@@ -19,7 +19,7 @@
 #
 
 #
-# SHERPA_VERSION 40301
+# SHERPA_VERSION 40401
 
 
 #***************************************************************************
@@ -59,10 +59,10 @@ execute exec("try:\n\tfrom sherpa import __file__ as sherpa_path\n\tsherpa_path 
 execute site_path = sherpa_path.replace('/sherpa','',-1)
 
 # Warn of out-of-date CRATES
-execute if sherpa_version > 0 and crates_version < 40201: print "Warning: Importing CRATES version " + crates_version_str +"; CRATES version 4.2.1 is now available,\n consider upgrading.\n"
+execute if sherpa_version > 0 and crates_version < 40401: print "Warning: Importing CRATES version " + crates_version_str +"; CRATES version 4.4.1 is now available,\n consider upgrading.\n"
 
 # Warn of out-of-date ChIPS
-execute if sherpa_version > 0 and chips_version < 40201: print "Warning: Importing ChIPS version " + chips_version_str +"; ChIPS version 4.2.1 is now available,\n consider upgrading.\n"
+execute if sherpa_version > 0 and chips_version < 40401: print "Warning: Importing ChIPS version " + chips_version_str +"; ChIPS version 4.4.1 is now available,\n consider upgrading.\n"
 
 # Import CRATES and ChIPS, including HLUI for each
 import_all pychips pycrates pychips.hlui pycrates.hlui

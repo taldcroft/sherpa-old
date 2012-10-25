@@ -4,7 +4,7 @@
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
-#  the Free Software Foundation; either version 2 of the License, or
+#  the Free Software Foundation; either version 3 of the License, or
 #  (at your option) any later version.
 #
 #  This program is distributed in the hope that it will be useful,
@@ -76,19 +76,20 @@ __all__ = ('NoNewAttributesAfterInit', 'SherpaTest', 'SherpaTestCase',
            '_guess_ampl_scale', 'apache_muller', 'bisection', 'bool_cast',
            'calc_ftest', 'calc_mlr', 'calc_total_error', 'create_expr',
            'dataspace1d', 'dataspace2d', 'demuller',
-           'divide_run_parallel', 'erf', 'export_method', 'extract_kernel',
+           'erf', 'erfinv', 'export_method', 'extract_kernel',
            'filter_bins', 'gamma', 'get_func_usage', 'get_fwhm',
            'get_keyword_defaults', 'get_keyword_names', 'get_midpoint',
            'get_num_args', 'get_peak', 'get_position', 'get_valley',
            'guess_amplitude', 'guess_amplitude2d', 'guess_amplitude_at_ref',
            'guess_bounds', 'guess_fwhm', 'guess_position', 'guess_radius',
            'guess_reference', 'histogram1d', 'histogram2d', 'igam', 'igamc',
-           'incbet', 'interpolate', 'is_binary_file', 'lgam', 'needs_data',
-           'neville', 'new_muller', 'normalize', 'numpy_convolve',
+           'incbet', 'interpolate', 'is_binary_file', 'Knuth_close', 'lgam',
+           'linear_interp', 'nearest_interp', 'needs_data', 'neville', 'neville2d',
+           'new_muller', 'normalize', 'numpy_convolve',
            'pad_bounding_box', 'parallel_map', 'param_apply_limits',
            'parse_expr', 'poisson_noise', 'print_fields', 'rebin',
            'sao_arange', 'sao_fcmp', 'set_origin', 'sum_intervals', 'zeroin',
-           'multinormal_pdf', 'multit_pdf')
+           'multinormal_pdf', 'multit_pdf', 'get_error_estimates', 'quantile')
 
 _guess_ampl_scale = 1.e+3
 
@@ -224,6 +225,9 @@ class SherpaTest(numpytest.NumpyTest):
 
 # at what precisions do we assume equality in energy grids?
 eps = numpy.finfo(numpy.float32).eps
+
+def erfinv(y):
+    return ndtri((y+1.0)/2.0)/numpy.sqrt(2.0)
 
 def filter_bins(mins, maxes, axislist):
     mask=None
@@ -558,6 +562,53 @@ def calc_total_error(staterror=None, syserror=None):
     return error
 
 
+def quantile(sorted_array, f):
+    """Return the quantile element from sorted_array, where f is [0,1] using linear interpolation.
+
+    Based on the description of the GSL routine
+    gsl_stats_quantile_from_sorted_data - e.g.
+    http://www.gnu.org/software/gsl/manual/html_node/Median-and-Percentiles.html
+    but all errors are my own.
+
+    sorted_array is assumed to be 1D and sorted.
+    """
+    sorted_array = numpy.asarray(sorted_array)
+
+    if len(sorted_array.shape) != 1:
+        raise RuntimeError, "Error: input array is not 1D"
+    n = sorted_array.size
+
+    q = (n-1) * f
+    i = numpy.int(numpy.floor(q))
+    delta = q - i
+
+    return (1.0-delta) * sorted_array[i] + delta * sorted_array[i+1]
+
+
+def get_error_estimates(x, sorted=False):
+    """
+    Compute the quantiles and return the median, -1 sigma value, and +1 sigma
+    value for the array *x*.
+
+    `x`        input ndarray
+    `sorted`   boolean flag to sort array, default=False
+
+    returns a 3-tuple (median, -1 sigma value, and +1 sigma value)
+
+    """
+    xs = numpy.asarray(x)
+    if not sorted:
+        xs.sort()
+        xs = numpy.array(xs)
+
+    sigfrac = 0.682689
+    median = quantile(xs, 0.5)
+    lval   = quantile(xs, (1-sigfrac)/2.0)
+    hval   = quantile(xs, (1+sigfrac)/2.0)
+
+    return (median, lval, hval)
+
+
 def poisson_noise(x):
     """
 
@@ -707,12 +758,15 @@ def dataspace1d(start, stop, step=1, numbins=None):
             raise TypeError("input has produced less than 2 bins, found start=%s stop=%s step=%s" % (start, stop, step))
 
     #xx = numpy.arange(start, stop, step, dtype=float)
-    xx = sao_arange(start, stop, step)
+    #xx = sao_arange(start, stop, step)
+    xx = None
     if numbins is not None:
         if numbins <= 1:
             raise TypeError("input should be numbins > 1, found numbins=%s" % numbins)
             
         xx = numpy.linspace(start, stop, numbins+1)
+    else:
+        xx = sao_arange(start, stop, step)
 
     xlo = numpy.array(xx[:-1])
     xhi = numpy.array(xx[1:])
@@ -767,8 +821,34 @@ def histogram2d( x, y, x_grid, y_grid ):
     vals = hist2d( numpy.asarray(x), numpy.asarray(y), x_grid, y_grid )
     return vals.reshape( (len(x_grid),len(y_grid)) )
 
+def interp_util( xout, xin, yin ):
+    lenxin = len(xin)
 
-def interpolate(xout, xin, yin, method='linear'):
+    i1 = numpy.searchsorted(xin, xout)
+
+    i1[ i1==0 ] = 1
+    i1[ i1==lenxin ] = lenxin-1
+
+##     if 0 == i1:
+##         i1 = 1
+##     if lenxin == i1:
+##         i1 = lenxin - 1
+
+    x0 = xin[i1-1]
+    x1 = xin[i1]
+    y0 = yin[i1-1]
+    y1 = yin[i1]
+    return x0, x1, y0, y1
+
+def linear_interp( xout, xin, yin ):
+    x0, x1, y0, y1 = interp_util( xout, xin, yin )
+    return (xout - x0) / (x1 - x0) * (y1 - y0) + y0
+
+def nearest_interp( xout, xin, yin ):
+    x0, x1, y0, y1 = interp_util( xout, xin, yin )
+    return numpy.where((numpy.abs(xout - x0) < numpy.abs(xout - x1)), y0, y1)
+    
+def interpolate(xout, xin, yin, function=linear_interp):
     """
     Interpolate the curve defined by (xin, yin) at points xout.
     The array xin must be monotonically increasing.  The output
@@ -777,30 +857,16 @@ def interpolate(xout, xin, yin, method='linear'):
     :param yin: y values of input curve
     :param xin: x values of input curve
     :param xout: x values of output interpolated curve
-    :param method: interpolation method ('linear' | 'nearest')
+    :param method: interpolation method (linear_interp | nearest_interp | neville)
 
     @:rtype: numpy array with interpolated curve
     """
-    lenxin = len(xin)
 
-    i1 = numpy.searchsorted(xin, xout)
-    i1[ i1==0 ] = 1
-    i1[ i1==lenxin ] = lenxin-1
+    if not callable(function):
+        raise TypeError("input function '%s' is not callable" %
+                           repr(function))
 
-    x0 = xin[i1-1]
-    x1 = xin[i1]
-    y0 = yin[i1-1]
-    y1 = yin[i1]
-
-    if method == 'linear':
-        return (xout - x0) / (x1 - x0) * (y1 - y0) + y0
-    elif method == 'nearest':
-        return numpy.where((numpy.abs(xout - x0) <
-                            numpy.abs(xout - x1)),
-                           y0, y1)
-
-    raise ValueError('Invalid interpolation method: %s' %
-                     method)
+    return function( xout, xin, yin )
 
 
 def is_binary_file( filename ):
@@ -1236,93 +1302,16 @@ def parallel_map(function, sequence, numcores=None):
     return run_tasks(procs, err_q, out_q, numcores)
 
 
-def divide_run_parallel(func, array, *args, **kwargs):
 
-    if not numpy.iterable(array):
-        raise TypeError('No input array(s) found')
-
-    array = numpy.asarray(array)
-
-    if not _multi or _ncpus < 2 or len(array) < _ncpus:
-        return func(array, *args, **kwargs)
-
-    def worker(pid, queue, err, func, slice, args, kwargs):
-        try:
-            result = func(slice, *args, **kwargs)
-        except Exception, e:
-            # Serialize just the class and args instead of instance
-            # Pickle has some crazy interpretation of the Exception
-            # interface.  This causes problems for classes that 
-            # inherit from SherpaErr
-            err.put( (e.__class__,e.args) )
-            return
-
-        queue.put( (pid, result) )
-
-
-    tasks = []
-    die = (lambda tasks : [task.terminate() for task in tasks
-                           if task.exitcode is None])
-
-    ncpus = _ncpus
-    manager = multiprocessing.Manager()
-    q   = manager.Queue()
-    err = manager.Queue()
-
-    # partition the array space according to num cpus
-    start = 0
-    nelem = len(array)
-    chunk = int(nelem / ncpus)
-    resid = int(nelem % ncpus)
-    stop  = chunk
-
-    # process ids keep the pieces in order for final result array
-    pid = 0
-
-    # less the last CPU, partition the array space for each process
-    for ii in xrange(ncpus-1):
-        tasks.append(multiprocessing.Process(target=worker,
-                             args=(pid, q, err, func, array[start:stop],
-                                   args, kwargs)))
-        start += chunk
-        stop += chunk
-        pid += 1
-
-
-    # last CPU includes residual array elements (mod ncpus)
-    tasks.append(multiprocessing.Process(target=worker,
-                         args=(pid, q, err, func, array[start:stop+resid],
-                               args, kwargs)))
-
-    try:
-        for task in tasks:
-            task.start()
-
-        for task in tasks:
-            task.join()
-    except KeyboardInterrupt, e:
-        die(tasks)
-        raise e
-
-    if not err.empty():
-        die(tasks)
-        # Obtain the class and args from the child process
-        # create a new instance with args and then clobber
-        # them to ensure this instance matches the one from
-        # the child.  This works-around the constructor of
-        # exceptions that inherit from SherpaErr.
-        cls, args = err.get()
-        ex = cls(*args)
-        ex.args = args
-        raise ex
-
-    # use hash table to quickly sort pieces of result arrays by pid
-    results = {}
-    while not q.empty():
-        id, array = q.get()
-        results[id] = array
-
-    return numpy.concatenate([results[key] for key in range(ncpus)])
+################################# Neville2d ###################################
+def neville2d( xinterp, yinterp, x, y, fval ):
+    nrow = fval.shape[ 0 ]
+    ncol = fval.shape[ 1 ]
+    tmp = numpy.zeros( nrow )
+    for row in xrange( nrow ):
+        tmp[ row ] = neville( yinterp, y, fval[ row ] )
+    return neville( xinterp, x, tmp )
+################################# Neville2d ###################################
 
 ################################## Hessian ####################################
 
@@ -1617,32 +1606,32 @@ def is_iterable( arg ):
 def is_sequence( start, mid, end ):
     return (start < mid) and (mid < end)
 
-def Knuth_close( x, y, tol, myop=operator.__or__ ):
-    """ The following text was taken verbatim from:
+## def Knuth_close( x, y, tol, myop=operator.__or__ ):
+##     """ The following text was taken verbatim from:
         
-    http://www.boost.org/doc/libs/1_35_0/libs/test/doc/components/test_tools/floating_point_comparison.html#Introduction
+##     http://www.boost.org/doc/libs/1_35_0/libs/test/doc/components/test_tools/floating_point_comparison.html#Introduction
 
-    In most cases it is unreasonable to use an operator==(...)
-    for a floating-point values equality check. The simple solution
-    like abs(f1-f2) <= e does not work for very small or very big values.
-    This floating-point comparison algorithm is based on the more
-    confident solution presented by D. E. Knuth in 'The art of computer
-    programming (vol II)'. For a given floating point values u and v and
-    a tolerance e:
+##     In most cases it is unreasonable to use an operator==(...)
+##     for a floating-point values equality check. The simple solution
+##     like abs(f1-f2) <= e does not work for very small or very big values.
+##     This floating-point comparison algorithm is based on the more
+##     confident solution presented by D. E. Knuth in 'The art of computer
+##     programming (vol II)'. For a given floating point values u and v and
+##     a tolerance e:
     
-    | u - v | <= e * |u| and | u - v | <= e * |v|                    (1)
-    defines a "very close with tolerance e" relationship between u and v
+##     | u - v | <= e * |u| and | u - v | <= e * |v|                    (1)
+##     defines a "very close with tolerance e" relationship between u and v
     
-    | u - v | <= e * |u| or   | u - v | <= e * |v|                   (2)
-    defines a "close enough with tolerance e" relationship between
-    u and v. Both relationships are commutative but are not transitive.
-    The relationship defined by inequations (1) is stronger that the
-    relationship defined by inequations (2) (i.e. (1) => (2) )."""
+##     | u - v | <= e * |u| or   | u - v | <= e * |v|                   (2)
+##     defines a "close enough with tolerance e" relationship between
+##     u and v. Both relationships are commutative but are not transitive.
+##     The relationship defined by inequations (1) is stronger that the
+##     relationship defined by inequations (2) (i.e. (1) => (2) )."""
     
-    diff = abs( x - y )
-    if 0.0 == x or 0.0 == y:
-        return diff <= tol
-    return myop( diff <= tol * abs( x ), diff <= tol * abs( y ) )
+##     diff = abs( x - y )
+##     if 0.0 == x or 0.0 == y:
+##         return diff <= tol
+##     return myop( diff <= tol * abs( x ), diff <= tol * abs( y ) )
 
 def safe_div( num, denom ):
     import sys
@@ -1659,7 +1648,7 @@ def safe_div( num, denom ):
     
     return num / denom
 
-def Knuth_boost_close( x, y, tol, myop=operator.__or__ ):
+def Knuth_close( x, y, tol, myop=operator.__or__ ):
     """ The following text was taken verbatim from:
         
     http://www.boost.org/doc/libs/1_35_0/libs/test/doc/components/test_tools/floating_point_comparison.html#Introduction

@@ -4,7 +4,7 @@
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
-#  the Free Software Foundation; either version 2 of the License, or
+#  the Free Software Foundation; either version 3 of the License, or
 #  (at your option) any later version.
 #
 #  This program is distributed in the hope that it will be useful,
@@ -23,70 +23,39 @@ Classes for plotting, analysis of astronomical data sets
 
 from sherpa.astro.data import DataPHA
 from sherpa.plot import DataPlot, ModelPlot, FitPlot, DelchiPlot, ResidPlot, \
-    RatioPlot, ChisqrPlot, ComponentSourcePlot, Histogram, backend
+    RatioPlot, ChisqrPlot, HistogramPlot, backend, Histogram
+from sherpa.plot import ComponentSourcePlot as _ComponentSourcePlot
 from sherpa.astro.utils import compile_energy_grid, bounds_check
 from sherpa.utils.err import PlotErr, IOErr
 from sherpa.utils import parse_expr, dataspace1d, histogram1d, filter_bins
 from numpy import iterable, set_printoptions, array2string, asarray
 from itertools import izip
+import logging
+
+warning = logging.getLogger(__name__).warning
 
 __all__ = ('SourcePlot','ARFPlot', 'BkgDataPlot', 'BkgModelPlot', 'BkgFitPlot',
            'BkgSourcePlot', 'BkgDelchiPlot', 'BkgResidPlot', 'BkgRatioPlot',
            'BkgChisqrPlot', 'OrderPlot', 'ModelHistogram', 'BkgModelHistogram')
 
 
-class ModelHistogram(Histogram):
+class ModelHistogram(HistogramPlot):
     "Derived class for creating 1D PHA model histogram plots"
     histo_prefs = backend.get_model_histo_defaults()
 
     def __init__(self):
-        self.xlo = None
-        self.xhi = None
-        self.y  = None
-        self.xlabel = None
-        self.ylabel = None
+        HistogramPlot.__init__(self)
         self.title = 'Model'
-        Histogram.__init__(self)
-
-    def __str__(self):
-        set_printoptions(precision=4, threshold=6)
-
-        xlo = self.xlo
-        if self.xlo is not None:
-            xlo = array2string(self.xlo)
-
-        xhi = self.xhi
-        if self.xhi is not None:
-            xhi = array2string(self.xhi)
-
-        y = self.y
-        if self.y is not None:
-            y = array2string(self.y)
-        
-        return (('xlo    = %s\n' +
-                 'xhi    = %s\n' +
-                 'y      = %s\n' +
-                 'xlabel = %s\n' +
-                 'ylabel = %s\n' +
-                 'title  = %s\n' +
-                 'histo_prefs = %s') %
-                ( xlo,
-                  xhi,
-                  y,
-                  self.xlabel,
-                  self.ylabel,
-                  self.title,
-                  self.histo_prefs))
 
     def prepare(self, data, model, stat=None):
 
         old_filter = parse_expr(data.get_filter())
         old_group = data.grouped
-
+        new_filter = parse_expr(data.get_filter(group=False))
         try:
             if old_group:
                 data.ungroup()
-                for interval in old_filter:
+                for interval in new_filter:
                     data.notice(*interval)
 
             (self.xlo, self.y, yerr, xerr,
@@ -95,13 +64,14 @@ class ModelHistogram(Histogram):
 
             if data.units != 'channel':
                 elo, ehi = data._get_ebins(group=False)
-                self.xlo = data.apply_filter(elo, data._min)
-                self.xhi = data.apply_filter(ehi, data._max)
-                if data.units == 'wavelength':
-                    self.xlo = data._hc/self.xlo
-                    self.xhi = data._hc/self.xhi
             else:
-                self.xhi = self.xlo + 1.
+                elo, ehi = (data.channel,data.channel+1.)
+
+            self.xlo = data.apply_filter(elo, data._min)
+            self.xhi = data.apply_filter(ehi, data._max)
+            if data.units == 'wavelength':
+                self.xlo = data._hc/self.xlo
+                self.xhi = data._hc/self.xhi
 
         finally:
             if old_group:
@@ -111,13 +81,8 @@ class ModelHistogram(Histogram):
                     data.notice(*interval)
 
 
-    def plot(self, overplot=False, clearwindow=True):
-        Histogram.plot(self, self.xlo, self.xhi, self.y, title=self.title,
-                       xlabel=self.xlabel, ylabel=self.ylabel,
-                       overplot=overplot, clearwindow=clearwindow)
 
-
-class SourcePlot(ModelHistogram):
+class SourcePlot(HistogramPlot):
     "Derived class for creating plots of the unconvolved source model"
 
     histo_prefs = backend.get_model_histo_defaults()
@@ -125,26 +90,8 @@ class SourcePlot(ModelHistogram):
     def __init__(self):
         self.units = None
         self.mask  = None
+        HistogramPlot.__init__(self)
         self.title = 'Source'
-        ModelHistogram.__init__(self)
-
-    def __str__(self):
-        return (('xlo    = %s\n' +
-                 'xhi    = %s\n' +
-                 'y      = %s\n' +
-                 'xlabel = %s\n' +
-                 'ylabel = %s\n' +
-                 'units  = %s\n' +
-                 'title  = %s\n' +
-                 'histo_prefs = %s') %
-                ( self.xlo,
-                  self.xhi,
-                  self.y,
-                  self.xlabel,
-                  self.ylabel,
-                  self.units,
-                  self.title,
-                  self.histo_prefs))
 
     def prepare(self, data, src, lo=None, hi=None):
         # Note: src is source model before folding
@@ -154,26 +101,27 @@ class SourcePlot(ModelHistogram):
         lo, hi = bounds_check(lo, hi)
 
         self.units = data.units
+        if self.units == "channel":
+            warning("Channel space is unappropriate for the PHA unfolded" +
+                    " source model,\nusing energy.")
+            self.units = "energy"
+
         self.xlabel = data.get_xlabel()
         self.title  = 'Source Model of %s' % data.name
-
         self.xlo, self.xhi = data._get_indep(filter=False)
-
         self.mask = filter_bins( (lo,), (hi,), (self.xlo,) )
-
         self.y = src(self.xlo, self.xhi)
-
         prefix_quant = 'E'
         quant = 'keV'
 
-        if data.units == "wavelength":
+        if self.units == "wavelength":
             prefix_quant = '\\lambda'
             quant = '\\AA'
             (self.xlo, self.xhi) = (self.xhi, self.xlo)
 
         xmid = abs(self.xhi-self.xlo)
 
-        self.xlabel = '%s (%s)' % (data.units.capitalize(), quant)
+        self.xlabel = '%s (%s)' % (self.units.capitalize(), quant)
         self.ylabel = '%s  Photons/sec/cm^2%s'
 
         if data.plot_fac == 0:
@@ -201,13 +149,12 @@ class SourcePlot(ModelHistogram):
             xhi = self.xhi[self.mask]
             y = self.y[self.mask]
 
-
         Histogram.plot(self, xlo, xhi, y, title=self.title,
                        xlabel=self.xlabel, ylabel=self.ylabel,
                        overplot=overplot, clearwindow=clearwindow)
 
 
-class ComponentModelPlot(ComponentSourcePlot, ModelHistogram):
+class ComponentModelPlot(_ComponentSourcePlot, ModelHistogram):
 
     histo_prefs = backend.get_component_histo_defaults()
 
@@ -225,7 +172,7 @@ class ComponentModelPlot(ComponentSourcePlot, ModelHistogram):
         ModelHistogram.plot(self, overplot, clearwindow)  
 
 
-class ComponentSourcePlot(ComponentSourcePlot, SourcePlot):
+class ComponentSourcePlot(_ComponentSourcePlot, SourcePlot):
 
     histo_prefs = backend.get_component_histo_defaults()
 
@@ -243,11 +190,9 @@ class ComponentSourcePlot(ComponentSourcePlot, SourcePlot):
         SourcePlot.plot(self, overplot, clearwindow)
 
 
-class ARFPlot(ModelHistogram):
+class ARFPlot(HistogramPlot):
     "Derived class for creating plots of ancillary response"
-
-    def __init__(self):
-        ModelHistogram.__init__(self)
+    histo_prefs = backend.get_model_histo_defaults()
 
     def prepare(self, arf, data=None):
         self.xlo = arf.energ_lo
@@ -329,36 +274,6 @@ class OrderPlot(ModelHistogram):
         self.colors=None
         self.use_default_colors=True
         ModelHistogram.__init__(self)
-
-    def __str__(self):
-        set_printoptions(precision=4, threshold=6)
-
-        xlo = self.xlo
-        if self.xlo is not None:
-            xlo = array2string(asarray(self.xlo))
-
-        xhi = self.xhi
-        if self.xhi is not None:
-            xhi = array2string(asarray(self.xhi))
-
-        y = self.y
-        if self.y is not None:
-            y = array2string(asarray(self.y))
-
-        return (('xlo    = %s\n' +
-                 'xhi    = %s\n' +
-                 'y      = %s\n' +
-                 'xlabel = %s\n' +
-                 'ylabel = %s\n' +
-                 'title  = %s\n' +
-                 'histo_prefs = %s') %
-                ( xlo,
-                  xhi,
-                  y,
-                  self.xlabel,
-                  self.ylabel,
-                  self.title,
-                  self.histo_prefs))
 
     def prepare(self, data, model, orders=None, colors=None):
         self.orders = data.response_ids

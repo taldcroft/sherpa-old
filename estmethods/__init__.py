@@ -4,7 +4,7 @@
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
-#  the Free Software Foundation; either version 2 of the License, or
+#  the Free Software Foundation; either version 3 of the License, or
 #  (at your option) any later version.
 #
 #  This program is distributed in the hope that it will be useful,
@@ -20,18 +20,14 @@
 import numpy
 _ = numpy.seterr(invalid='ignore')
 
-from sherpa.utils import NoNewAttributesAfterInit, print_fields, Knuth_close, is_iterable, list_to_open_interval, mysgn, quad_coef, apache_muller, bisection, demuller, zeroin, OutOfBoundErr, func_counter
+from sherpa.utils import NoNewAttributesAfterInit, print_fields, Knuth_close, is_iterable, list_to_open_interval, mysgn, quad_coef, apache_muller, bisection, demuller, zeroin, OutOfBoundErr, func_counter, _multi, _ncpus
 
 import logging
 import sherpa.estmethods._est_funcs
 from itertools import izip
 
-_multi=False
-_ncpus=1
 try:
     import multiprocessing
-    _multi=True
-    _ncpus = multiprocessing.cpu_count()
 except:
     pass
 
@@ -1175,8 +1171,8 @@ def parallel_est(estfunc, limit_parnums, pars, numcores=_ncpus):
                 err_q.put( EstNewMin(parvals) )
                 return
             except Exception, e:
-                err_q.put( e.__class__() )
-                #err_q.put(e)
+                #err_q.put( e.__class__() )
+                err_q.put(e)
                 return
 
         out_q.put(results)

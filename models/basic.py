@@ -4,7 +4,7 @@
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
-#  the Free Software Foundation; either version 2 of the License, or
+#  the Free Software Foundation; either version 3 of the License, or
 #  (at your option) any later version.
 #
 #  This program is distributed in the hope that it will be useful,
@@ -112,6 +112,11 @@ class Delta1D(ArithmeticModel):
         self.ampl = Parameter(name, 'ampl', 1)
         ArithmeticModel.__init__(self, name, (self.pos, self.ampl))
 
+    def get_center(self):
+        return (self.pos.val,)
+
+    def set_center(self, pos, *args, **kwargs):
+        self.pos.set(pos)
 
     def guess(self, dep, *args, **kwargs):
         norm = guess_amplitude(dep, *args)
@@ -201,6 +206,11 @@ class Gauss1D(ArithmeticModel):
         self.ampl = Parameter(name, 'ampl', 1)
         ArithmeticModel.__init__(self, name, (self.fwhm, self.pos, self.ampl))
 
+    def get_center(self):
+        return (self.pos.val,)
+
+    def set_center(self, pos, *args, **kwargs):
+        self.pos.set(pos)
 
     def guess(self, dep, *args, **kwargs):
         norm = guess_amplitude(dep, *args)
@@ -271,6 +281,12 @@ class NormGauss1D(ArithmeticModel):
         self.pos = Parameter(name, 'pos', 0)
         self.ampl = Parameter(name, 'ampl', 1)
         ArithmeticModel.__init__(self, name, (self.fwhm, self.pos, self.ampl))
+
+    def get_center(self):
+        return (self.pos.val,)
+
+    def set_center(self, pos, *args, **kwargs):
+        self.pos.set(pos)
 
     def guess(self, dep, *args, **kwargs):
         ampl = guess_amplitude(dep, *args)
@@ -573,6 +589,12 @@ class Delta2D(ArithmeticModel):
         ArithmeticModel.__init__(self, name, (self.xpos, self.ypos, self.ampl))
         self.cache = 0
 
+    def get_center(self):
+        return (self.xpos.val, self.ypos.val)
+
+    def set_center(self, xpos, ypos, *args, **kwargs):
+        self.xpos.set(xpos)
+        self.ypos.set(ypos)
 
     def guess(self, dep, *args, **kwargs):
         xpos, ypos = guess_position(dep, *args)
@@ -602,6 +624,12 @@ class Gauss2D(ArithmeticModel):
                                   self.theta, self.ampl))
         self.cache = 0
 
+    def get_center(self):
+        return (self.xpos.val, self.ypos.val)
+
+    def set_center(self, xpos, ypos, *args, **kwargs):
+        self.xpos.set(xpos)
+        self.ypos.set(ypos)
 
     def guess(self, dep, *args, **kwargs):
         xpos, ypos = guess_position(dep, *args)
@@ -632,6 +660,12 @@ class NormGauss2D(ArithmeticModel):
                                   self.theta, self.ampl))
         self.cache = 0
 
+    def get_center(self):
+        return (self.xpos.val, self.ypos.val)
+
+    def set_center(self, xpos, ypos, *args, **kwargs):
+        self.xpos.set(xpos)
+        self.ypos.set(ypos)
 
     def guess(self, dep, *args, **kwargs):
         xpos, ypos = guess_position(dep, *args)
@@ -727,6 +761,7 @@ class TableModel(ArithmeticModel):
         self.__y = None
         self.__filtered_y = None
         self.filename = None
+        self.method = linear_interp  # interpolation method
         self.ampl = Parameter(name, 'ampl', 1)
         ArithmeticModel.__init__(self, name, (self.ampl,))
 
@@ -738,7 +773,6 @@ class TableModel(ArithmeticModel):
         self.filename = state.pop('_file', None)
         ArithmeticModel.__setstate__(self, state)
 
-
     def load(self, x, y):
         self.__y = y
         self.__x = x
@@ -748,6 +782,14 @@ class TableModel(ArithmeticModel):
             idx = numpy.asarray(x).argsort()
             self.__y = numpy.asarray(y)[idx]
             self.__x = numpy.asarray(x)[idx]
+
+
+    def get_x(self):
+        return self.__x
+
+
+    def get_y(self):
+        return self.__y
 
 
     def fold(self, data):
@@ -763,7 +805,7 @@ class TableModel(ArithmeticModel):
     def calc(self, p, x0, x1=None, *args, **kwargs):
 
         if self.__x is not None and self.__y is not None:
-            return p[0] * interpolate(x0, self.__x, self.__y)
+            return p[0] * interpolate(x0, self.__x, self.__y, function=self.method)
 
         elif (self.__filtered_y is not None and
               len(x0) == len(self.__filtered_y)):

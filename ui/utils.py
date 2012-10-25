@@ -4,7 +4,7 @@
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
-#  the Free Software Foundation; either version 2 of the License, or
+#  the Free Software Foundation; either version 3 of the License, or
 #  (at your option) any later version.
 #
 #  This program is distributed in the hope that it will be useful,
@@ -103,6 +103,13 @@ def _send_to_pager(all, filename=None, clobber=False):
                     pager = os.popen('/usr/bin/more', 'w')
                 else:
                     raise IOErr('nopager')
+
+        # check if filename is StringIO obj
+        elif hasattr(filename, 'write'):
+            pager = filename
+            print >> pager, all
+            return
+
         else:
             _check_type(filename, basestring, 'filename', 'a string')
             if os.path.isfile(filename) and not clobber:
@@ -156,9 +163,11 @@ copy_reg.pickle(numpy.ufunc, reduce_ufunc)
 
 class ModelWrapper(NoNewAttributesAfterInit):
 
-    def __init__(self, session, modeltype):
+    def __init__(self, session, modeltype, args=(), kwargs={}):
         self._session = session
         self.modeltype = modeltype
+        self.args = args
+        self.kwargs = kwargs
         NoNewAttributesAfterInit.__init__(self)
 
     def __call__(self, name):
@@ -168,7 +177,7 @@ class ModelWrapper(NoNewAttributesAfterInit):
         if (m is not None) and isinstance(m, self.modeltype):
             return m
 
-        m = self.modeltype(name)
+        m = self.modeltype(name, *self.args, **self.kwargs)
         self._session._add_model_component(m)
         return m
 
@@ -328,10 +337,13 @@ class Session(NoNewAttributesAfterInit):
         self._sources = {}
 
         self._fit_results = None
+        self._pvalue_results = None
 
         self._covariance_results = None
         self._confidence_results = None        
         self._projection_results = None
+
+        self._pyblocxs = sherpa.sim.MCMC()
 
         self._splitplot = sherpa.plot.SplitPlot()
         self._jointplot = sherpa.plot.JointPlot()
@@ -340,6 +352,8 @@ class Session(NoNewAttributesAfterInit):
 
         self._compmdlplot = sherpa.plot.ComponentModelPlot()
         self._compsrcplot = sherpa.plot.ComponentSourcePlot()
+        #self._comptmplmdlplot = sherpa.plot.ComponentTemplateModelPlot()
+        self._comptmplsrcplot = sherpa.plot.ComponentTemplateSourcePlot()
 
         self._sourceplot= sherpa.plot.SourcePlot()
         self._fitplot   = sherpa.plot.FitPlot()
@@ -349,6 +363,11 @@ class Session(NoNewAttributesAfterInit):
         self._ratioplot = sherpa.plot.RatioPlot()
         self._psfplot = sherpa.plot.PSFPlot()
         self._kernelplot = sherpa.plot.PSFKernelPlot()
+        self._lrplot = sherpa.plot.LRHistogram()
+        self._pdfplot = sherpa.plot.PDFPlot()
+        self._cdfplot = sherpa.plot.CDFPlot()
+        self._traceplot = sherpa.plot.TracePlot()
+        self._scatterplot = sherpa.plot.ScatterPlot()
 
         self._datacontour  = sherpa.plot.DataContour()
         self._modelcontour = sherpa.plot.ModelContour()
@@ -1187,11 +1206,11 @@ class Session(NoNewAttributesAfterInit):
         """
         funcs = []
         for func in dir(self):
-            if not func.startswith('_') and callable(eval('self.'+func)):
+            if not func.startswith('_') and callable(getattr(self,func)):
                 funcs.append(func)
         return funcs
         
-    def list_functions(self, filename=None):
+    def list_functions(self, outfile=None, clobber=False):
         """
         list_functions
 
@@ -1201,8 +1220,11 @@ class Session(NoNewAttributesAfterInit):
         SYNTAX
 
         Arguments:
-           filename   - name of saved file
+           outfile    - name of saved file
                         default = None
+
+           clobber    - overwrite outfile if exists
+                        default = False
 
         Returns:
            None
@@ -1226,7 +1248,7 @@ class Session(NoNewAttributesAfterInit):
         for func in funcs_list:
             funcs += '%s\n' % func
 
-        _send_to_pager(funcs, filename)
+        _send_to_pager(funcs, outfile, clobber)
 
 
     ###########################################################################
@@ -2233,6 +2255,7 @@ class Session(NoNewAttributesAfterInit):
         if val is None:
             val, id = id, val
         err=None
+        d = self.get_data(id)
         fractional=sherpa.utils.bool_cast(fractional)        
         if numpy.iterable(val):
             err = numpy.asarray(val, SherpaFloat)
@@ -2242,7 +2265,7 @@ class Session(NoNewAttributesAfterInit):
                 err = val*d.get_dep()
             else:
                 err = numpy.array([val]*len(d.get_dep()))
-        self.get_data(id).syserror = err
+        d.syserror = err
 
 
     def get_staterror(self, id=None, filter=False):
@@ -3653,7 +3676,7 @@ class Session(NoNewAttributesAfterInit):
             self._model_globals.update(self._model_types)
 
 
-    def add_model(self, modelclass):
+    def add_model(self, modelclass, args=(), kwargs={}):
         """
         add_model
 
@@ -3679,7 +3702,7 @@ class Session(NoNewAttributesAfterInit):
             raise TypeError("model class '%s' is not a derived class" % name + 
                             " from sherpa.models.ArithmeticModel")
 
-        self._model_types[name] = ModelWrapper(self, modelclass)
+        self._model_types[name] = ModelWrapper(self, modelclass, args, kwargs)
         self._model_globals.update(self._model_types)
         _assign_obj_to_main(name, self._model_types[name])
 
@@ -3763,7 +3786,7 @@ class Session(NoNewAttributesAfterInit):
 
         show = show.strip().lower()
         for item in ["arfmodel", "convolutionmodel", "multiresponsesummodel", "pileuprmfmodel",
-                     "jdpileup", "rmfmodel", "tablemodel", "usermodel"]:
+                     "jdpileup", "rmfmodel", "tablemodel", "usermodel", "psfmodel"]:
             if item in keys:
                 keys.remove(item)
 
@@ -4482,8 +4505,78 @@ class Session(NoNewAttributesAfterInit):
         return (x,y)
 
 
+
+    def load_template_model(self, modelname, templatefile, dstype=sherpa.data.Data1D,
+                            sep=' ', comment='#', method=sherpa.utils.linear_interp):
+
+        if sherpa.utils.is_binary_file(templatefile):
+            raise sherpa.utils.err.IOErr('notascii', templatefile)
+
+        names, cols = sherpa.io.read_file_data(templatefile,
+                                               sep=sep, comment=comment)
+
+        if len(names) > len(cols):
+            raise sherpa.utils.err.IOErr('toomanycols')
+
+        names = [name.strip().lower() for name in names]
+
+        filenames = None
+        modelflags = None
+        parnames = names[:]
+        parvals = []
+        for name, col in izip(names, cols):
+            # Find the column with the filenames, remove it from the set of
+            # parameter names
+            if name.startswith('file'):
+                filenames = col
+                parnames.remove(name)
+                continue
+            # Find the column with the modelflags, remove it from the set of
+            # parameter names
+            if name.startswith('modelflag'):
+                modelflags = col
+                parnames.remove(name)
+                continue
+            parvals.append(numpy.array(col, dtype=SherpaFloat))
+
+        parvals = numpy.asarray(parvals).T
+
+        if len(parvals) == 0:
+            raise sherpa.utils.err.IOErr('noparamcols', templatefile)
+
+        if filenames is None:
+            raise sherpa.utils.err.IOErr('reqcol', 'filename', templatefile)
+
+        if modelflags is None:
+            raise sherpa.utils.err.IOErr('reqcol', 'modelflag', templatefile)
+
+        templates = []
+        for filename in filenames:
+            tnames, tcols = sherpa.io.read_file_data(filename,
+                                                     sep=sep, comment=comment)
+            if len(tcols) == 1:
+                raise sherpa.utils.err.IOErr('onecolneedtwo', filename)
+            elif len(tcols) == 2:
+                tm = sherpa.models.TableModel(filename)
+                tm.method = method  # interpolation method
+                tm.load(*tcols)
+                tm.ampl.freeze()
+                templates.append(tm)
+            else:
+                raise sherpa.utils.err.IOErr('toomanycols', str(tnames), '2')
+
+        assert( len(templates) == parvals.shape[0] )
+
+        templatemodel = sherpa.models.create_template_model(modelname, parnames, parvals, 
+                                                            templates)
+        self._tbl_models.append(templatemodel)
+        self._add_model_component(templatemodel)
+
+
+
     def load_table_model(self, modelname, filename, ncols=2, colkeys=None,
-                         dstype=sherpa.data.Data1D, sep=' ', comment='#'):
+                         dstype=sherpa.data.Data1D, sep=' ', comment='#',
+                         method=sherpa.utils.linear_interp):
         """
         load_table_model
 
@@ -4512,6 +4605,9 @@ class Session(NoNewAttributesAfterInit):
            comment    - comment character
                         default = '#'
 
+           method     - interpolation method
+                        default = linear {neville, linear}
+
         Returns:
            None
 
@@ -4524,6 +4620,8 @@ class Session(NoNewAttributesAfterInit):
            set_model, load_user_model, add_user_pars
         """
         tablemodel = sherpa.models.TableModel(modelname)
+        # interpolation method
+        tablemodel.method = method 
         tablemodel.filename = filename
         x, y = self._read_user_model(filename, ncols, colkeys,
                                      dstype, sep, comment)
@@ -4885,6 +4983,23 @@ class Session(NoNewAttributesAfterInit):
 
         except IdentifierErr:
             pass
+
+        # If the PSF is Sherpa model and it implements the center
+        # attribute, then populate the model position parameters
+        # using the PSF center if the user has not already done so.
+        # Note: PSFKernel only.
+        if (psf.kernel is not None and callable(psf.kernel) and 
+            psf.model is not None and isinstance(psf.model, sherpa.instrument.PSFKernel)):
+
+            psf_center = psf.center
+            if numpy.isscalar(psf_center):
+                psf_center = [psf_center]
+            try:
+                center = psf.kernel.get_center()
+                if (numpy.asarray(center) == 0.0).all():
+                    psf.kernel.set_center(*psf_center, values=True)
+            except NotImplementedError:
+                pass
 
 
     def get_psf(self, id=None):
@@ -5563,6 +5678,333 @@ class Session(NoNewAttributesAfterInit):
     simulfit = fit
 
 
+    #
+    ## Simulation functions
+    #
+
+    def _run_pvalue(self, null_model, alt_model, conv_model=None,
+                 id=1, otherids=(), num=500, bins=25, numcores=None):
+        ids, fit = self._get_fit(id, otherids)
+        
+        pvalue = sherpa.sim.LikelihoodRatioTest.run
+        results = pvalue(fit, null_model, alt_model, conv_model,
+                      niter=num,
+                      stat=self._current_stat,
+                      method=self._current_method,
+                      numcores=numcores)
+
+        info(results.format())
+        self._pvalue_results = results
+
+
+    def get_pvalue_results(self):
+        """
+        get_pvalue_results
+
+        SYNOPSIS
+           Access the simulation results of the likelihood ratio test.
+
+        SYNTAX
+
+        Arguments:
+           None
+
+        Returns:
+           Likelihood Ratio Test results 
+
+        DESCRIPTION
+           Access the simulation results of the likelihood ratio test.
+
+        SEE ALSO
+           plot_pvalue, get_pvalue_plot
+        """
+        return self._pvalue_results
+
+
+    def plot_pvalue(self, null_model, alt_model, conv_model=None,
+                    id=1, otherids=(), num=500, bins=25, numcores=None,
+                    replot=False, overplot=False, clearwindow=True):
+        """
+        plot_pvalue
+
+        SYNOPSIS
+           Plot a histogram of likelihood ratios comparing fits of the null
+           model to fits of the alternative model to faked data using poisson
+           noise.  Computes the likelihood ratio on the real data and the 
+           p-value.
+
+        SYNTAX
+
+        Arguments:
+
+           null_model  - model representing the null hypothesis
+
+           alt_model   - alternative model to compare to null
+
+           conv_model  - convolution model to include for fitting.
+                         default = None
+
+           id          - Sherpa data id
+                         default = default data id
+
+           otherids    - List of other Sherpa data ids
+                         default = ()
+
+           num         - Number of iterations to run
+                         default = 500
+
+           bins        - Number of bins for the histogram
+                         default = 25
+
+           numcores    - Number of cpus to use during simulation
+                         default = number of detected cpus
+
+           replot      - Send cached data arrays to visualizer
+                         default = False
+
+           overplot    - Plot data without clearing previous plot
+                         default = False
+
+
+        Returns:
+           Likelihood Ratio Test results 
+
+        DESCRIPTION
+           Access the simulation results of the likelihood ratio test.
+
+        SEE ALSO
+           get_pvalue_results, get_pvalue_plot
+        """
+        if not sherpa.utils.bool_cast(replot) or self._pvalue_results is None:
+            self._run_pvalue(null_model, alt_model, conv_model,
+                          id, otherids, num, bins, numcores)
+
+        results = self._pvalue_results
+        lrplot = self._lrplot
+        if not sherpa.utils.bool_cast(replot):
+            lrplot.prepare(results.ratios, bins,
+                           num, results.lr, results.ppp)
+
+        try:
+            sherpa.plot.begin()
+            lrplot.plot(overplot=overplot, clearwindow=clearwindow)
+        except:
+            sherpa.plot.exceptions()
+            raise
+        else:
+            sherpa.plot.end()
+
+
+    def get_pvalue_plot(self, null_model=None, alt_model=None, conv_model=None,
+                     id=1, otherids=(), num=500, bins=25, numcores=None,
+                     recalc=False):
+        """
+        get_pvalue_plot
+
+        SYNOPSIS
+           Acess the histogram plot of the likelihood ratios comparing fits 
+           of the null model to fits of the alternative model to faked data
+           using poisson noise.  Access the likelihood ratio on the real data
+           and the p-value.
+
+        SYNTAX
+
+        Arguments:
+
+           null_model  - model representing the null hypothesis
+
+           alt_model   - alternative model to compare to null
+
+           conv_model  - convolution model to include for fitting.
+                         default = None
+
+           id          - Sherpa data id
+                         default = default data id
+
+           otherids    - List of other Sherpa data ids
+                         default = ()
+
+           num         - Number of iterations to run
+                         default = 500
+
+           bins        - Number of bins for the histogram
+                         default = 25
+
+           numcores    - Number of cpus to use during simulation
+                         default = number of detected cpus
+
+           recalc      - Recalculate the likelihood ratio test simulation
+                         default = False
+
+        Returns:
+           LRHistogram object
+
+        DESCRIPTION
+           Access the histogram plot of the likelihood ratio test.
+
+        SEE ALSO
+           plot_pvalue, get_pvalue_results
+
+        """
+        lrplot = self._lrplot
+        if not recalc:
+            return lrplot
+
+        if null_model is None:
+            raise TypeError("null model cannot be None")
+
+        if alt_model is None:
+            raise TypeError("alternative model cannot be None")
+
+        self._run_pvalue(null_model, alt_model, conv_model,
+                      id, otherids, num, bins, numcores)
+        results = self._pvalue_results
+        lrplot.prepare(results.ratios, bins,
+                       num, results.lr, results.ppp)
+        self._lrplot = lrplot
+        return lrplot
+
+
+    #
+    ## Sampling functions
+    #
+
+    def normal_sample(self, num=1, sigma=1, correlate=True,
+                      id=None, otherids=(), numcores=None):
+        """
+        normal_sample
+
+        SYNOPSIS
+           Samples the current thawed parameter from a uni-variate or
+           multi-variate normal distribution and computes the current
+           statistic value on the set.
+
+        SYNTAX
+
+        Arguments:
+
+           num         - Number of samples to calculate
+                         default = 1
+
+           sigma       - Spread of the normal distribution
+                         default = 1
+
+           correlate   - If True, sample from multi-variate normal using 
+                         covariance; if False, sample from uni-variate normal.
+                         default = True
+
+           id          - Sherpa data id
+                         default = default data id
+
+           otherids    - List of other Sherpa data ids
+                         default = ()
+
+           numcores    - Number of cpus to use to calculate the statistic
+                         default = number of detected cpus
+
+        Returns:
+           A NumPy array table with the first column representing the
+           statistic and subsequent columns as the parameters.
+
+        DESCRIPTION
+           
+
+        SEE ALSO
+           uniform_sample, t_sample
+
+        """
+        ids, fit = self._get_fit(id, otherids)
+        return sherpa.sim.normal_sample(fit, num, sigma, correlate, numcores)
+
+
+    def uniform_sample(self, num=1, factor=4,
+                       id=None, otherids=(), numcores=None):
+        """
+        uniform_sample
+
+        SYNOPSIS
+           Samples the current thawed parameter from a uniform distribution
+           and computes the current statistic value on the set.
+
+        SYNTAX
+
+        Arguments:
+
+           num         - Number of samples to calculate
+                         default = 1
+
+           factor      - Multiplier to expand the parameter scale
+                         default = 4
+
+           id          - Sherpa data id
+                         default = default data id
+
+           otherids    - List of other Sherpa data ids
+                         default = ()
+
+           numcores    - Number of cpus to use to calculate the statistic
+                         default = number of detected cpus
+
+        Returns:
+           A NumPy array table with the first column representing the
+           statistic and subsequent columns as the parameters.
+
+        DESCRIPTION
+           
+
+        SEE ALSO
+           normal_sample, t_sample
+
+        """
+        ids, fit = self._get_fit(id, otherids)
+        return sherpa.sim.uniform_sample(fit, num, factor, numcores)
+
+
+    def t_sample(self, num=1, dof=None, id=None, otherids=(), numcores=None):
+        """
+        t_sample
+
+        SYNOPSIS
+           Samples the current thawed parameter from a Student's t 
+           distribution and computes the current statistic value on the set.
+
+        SYNTAX
+
+        Arguments:
+
+           num         - Number of samples to calculate
+                         default = 1
+
+           dof         - Degrees of freedom, will calculate from current fit
+                         by default.
+                         default = None
+
+           id          - Sherpa data id
+                         default = default data id
+
+           otherids    - List of other Sherpa data ids
+                         default = ()
+
+           numcores    - Number of cpus to use to calculate the statistic
+                         default = number of detected cpus
+
+        Returns:
+           A NumPy array table with the first column representing the
+           statistic and subsequent columns as the parameters.
+
+        DESCRIPTION
+           
+
+        SEE ALSO
+           normal_sample, uniform_sample
+        """
+        ids, fit = self._get_fit(id, otherids)
+        if dof is None:
+            dof = (len(fit.data.eval_model_to_fit(fit.model)) -
+                   len(fit.model.thawedpars))
+        return sherpa.sim.t_sample(fit, num, dof, numcores)
+
+
     ###########################################################################
     # Error estimation
     ###########################################################################
@@ -6192,6 +6634,59 @@ class Session(NoNewAttributesAfterInit):
 
 
     ###########################################################################
+    # PyBLoCXS routines for Markov Chain Monte Carlo
+    ###########################################################################
+
+
+    def set_sampler_opt(self, opt, value):
+        self._pyblocxs.set_sampler_opt(opt, value)
+
+    def get_sampler_opt(self, opt):
+        return self._pyblocxs.get_sampler_opt(opt)
+
+    def get_sampler_name(self):
+        return self._pyblocxs.get_sampler_name()
+        
+    def set_sampler(self, sampler):
+        self._pyblocxs.set_sampler(sampler)
+
+    def get_sampler(self):
+        return self._pyblocxs.get_sampler()
+
+    def set_prior(self, par, prior):
+        self._pyblocxs.set_prior(par, prior)
+
+    def get_prior(self, par):
+        return self._pyblocxs.get_prior(par)
+
+    def list_priors(self):
+        return self._pyblocxs.list_priors()
+
+    def list_samplers(self):
+        return self._pyblocxs.list_samplers()
+
+    def get_draws(self, id=None, otherids=(), niter=1000):
+
+        ids, fit = self._get_fit(id, otherids)
+
+        # Allow the user to jump from a user defined point in parameter space?
+        # Meaning let the user set up parameter space without fitting first.
+
+        #fit_results = self.get_fit_results()
+        #if fit_results is None:
+        #    raise TypeError("Fit has not been run")
+
+        covar_results = self.get_covar_results()
+        if covar_results is None:
+            raise TypeError("Covariance has not been calculated")
+
+        covar_matrix = covar_results.extra_output
+
+        stats, accept, params = self._pyblocxs.get_draws(fit, covar_matrix, niter=niter)
+        return (stats, accept, params)
+
+
+    ###########################################################################
     # Basic plotting
     ###########################################################################
     #
@@ -6570,6 +7065,10 @@ class Session(NoNewAttributesAfterInit):
         self._check_model(model)
         if isinstance(model, basestring):
             model = self._eval_model_expression(model)
+
+        if isinstance(model, sherpa.models.TemplateModel):
+            self._prepare_plotobj(id, self._comptmplsrcplot, model=model)
+            return self._comptmplsrcplot
 
         self._prepare_plotobj(id, self._compsrcplot, model=model)
         return self._compsrcplot
@@ -7867,7 +8366,11 @@ class Session(NoNewAttributesAfterInit):
         if isinstance(model, basestring):
             model = self._eval_model_expression(model)
 
-        self._plot(id, self._compsrcplot, model, **kwargs)
+        plotobj = self._compsrcplot
+        if isinstance(model, sherpa.models.TemplateModel):
+            plotobj = self._comptmplsrcplot
+
+        self._plot(id, plotobj, model, **kwargs)
 
 
     def plot_model_component(self, id, model=None, **kwargs):
@@ -8280,6 +8783,92 @@ class Session(NoNewAttributesAfterInit):
             raise
         else:
             sherpa.plot.end()
+
+
+    #
+    ## Statistical plotting routines
+    #
+
+    def plot_pdf(self, points, name="x", xlabel="x", bins=12, normed=True, 
+                 replot=False, overplot=False, clearwindow=True ):
+
+        if not sherpa.utils.bool_cast(replot):
+            self._pdfplot.prepare(points, bins, normed, xlabel, name)
+
+        try:
+            sherpa.plot.begin()
+            self._pdfplot.plot(overplot, clearwindow)
+        except:
+            sherpa.plot.exceptions()
+            raise
+        else:
+            sherpa.plot.end()
+
+
+    def get_pdf_plot(self):
+        return self._pdfplot
+
+
+    def plot_cdf(self, points, name="x", xlabel="x", 
+                 replot=False, overplot=False, clearwindow=True ):
+
+        if not sherpa.utils.bool_cast(replot):
+            self._cdfplot.prepare(points, xlabel, name)
+
+        try:
+            sherpa.plot.begin()
+            self._cdfplot.plot(overplot, clearwindow)
+        except:
+            sherpa.plot.exceptions()
+            raise
+        else:
+            sherpa.plot.end()
+
+
+    def get_cdf_plot(self):
+        return self._cdfplot
+
+
+    def plot_trace(self, points, name="x", xlabel="x", 
+                   replot=False, overplot=False, clearwindow=True ):
+
+        if not sherpa.utils.bool_cast(replot):
+            self._traceplot.prepare(points, xlabel, name)
+
+        try:
+            sherpa.plot.begin()
+            self._traceplot.plot(overplot, clearwindow)
+        except:
+            sherpa.plot.exceptions()
+            raise
+        else:
+            sherpa.plot.end()
+
+
+    def get_trace_plot(self):
+        return self._traceplot
+
+
+    def plot_scatter(self, x, y, name="(x,y)", xlabel="x", ylabel="y",
+                   replot=False, overplot=False, clearwindow=True ):
+
+        if not sherpa.utils.bool_cast(replot):
+            self._scatterplot.prepare(x, y, xlabel, ylabel, name)
+
+        try:
+            sherpa.plot.begin()
+            self._scatterplot.plot(overplot, clearwindow)
+        except:
+            sherpa.plot.exceptions()
+            raise
+        else:
+            sherpa.plot.end()
+
+
+    def get_scatter_plot(self):
+        return self._scatterplot
+
+
 
     #
     # Contours

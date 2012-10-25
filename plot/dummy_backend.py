@@ -4,7 +4,7 @@
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
-#  the Free Software Foundation; either version 2 of the License, or
+#  the Free Software Foundation; either version 3 of the License, or
 #  (at your option) any later version.
 #
 #  This program is distributed in the hope that it will be useful,
@@ -30,7 +30,8 @@ __all__ = ('clear_window', 'plot', 'contour', 'point', 'set_subplot',
            'get_ratio_contour_defaults','get_confid_plot_defaults',
            'get_confid_contour_defaults', 'set_window_redraw', 'set_jointplot',
            'get_histo_defaults', 'get_model_histo_defaults',
-           'get_component_plot_defaults', 'get_component_histo_defaults')
+           'get_component_plot_defaults', 'get_component_histo_defaults',
+           'vline', 'hline', 'get_scatter_plot_defaults', 'get_cdf_plot_defaults')
 
 def point(*args, **kwargs):
     pass
@@ -47,6 +48,9 @@ histo = point
 contour = point
 set_subplot = point
 set_jointplot = point
+
+vline = point
+hline = point
 
 def get_split_plot_defaults():
     return get_keyword_defaults(set_subplot, 3)
@@ -86,3 +90,5 @@ get_confid_contour_defaults = get_dummy_defaults
 get_model_histo_defaults = get_dummy_defaults
 get_component_plot_defaults = get_dummy_defaults
 get_component_histo_defaults = get_dummy_defaults
+get_scatter_plot_defaults = get_dummy_defaults
+get_cdf_plot_defaults = get_dummy_defaults

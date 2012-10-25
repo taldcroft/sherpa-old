@@ -1,8 +1,8 @@
 import numpy
 import random
 
-from sherpa.optmethods import _port
-from sherpa.optmethods import _powell
+#from sherpa.optmethods import _port
+#from sherpa.optmethods import _powell
 import _odrpack
 
 from sherpa.optmethods import OptMethod

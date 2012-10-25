@@ -1,4 +1,4 @@
-# SHERPA_VERSION 4.3.1
+# SHERPA_VERSION 4.4.1
 [options]
 # Plotting packages available- pylab, chips
 plot_pkg   : chips

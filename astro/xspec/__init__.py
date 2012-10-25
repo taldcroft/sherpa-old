@@ -4,7 +4,7 @@
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
-#  the Free Software Foundation; either version 2 of the License, or
+#  the Free Software Foundation; either version 3 of the License, or
 #  (at your option) any later version.
 #
 #  This program is distributed in the hope that it will be useful,
@@ -1052,7 +1052,7 @@ class XSpexrav(XSAdditiveModel):
     def __init__(self, name='pexrav'):
         self.PhoIndex = Parameter(name, 'PhoIndex', 2., -9., 9., -hugeval, hugeval)
         self.foldE = Parameter(name, 'foldE', 100., 1., 1.e6, 0.0, hugeval, 'keV')
-        self.rel_refl = Parameter(name, 'rel_refl', 0., 0., 1.e6, 0.0, hugeval)
+        self.rel_refl = Parameter(name, 'rel_refl', 0., 0., 1.e6, -1.0, hugeval)
         self.redshift = Parameter(name, 'redshift', 0., 0., 10., 0.0, hugeval, frozen=True)
         self.abund = Parameter(name, 'abund', 1., 0.0, 1.e6, 0.0, hugeval, frozen=True)
         self.Fe_abund = Parameter(name, 'Fe_abund', 1., 0.0, 1.e6, 0.0, hugeval, frozen=True)
@@ -1068,7 +1068,7 @@ class XSpexriv(XSAdditiveModel):
     def __init__(self, name='pexriv'):
         self.PhoIndex = Parameter(name, 'PhoIndex', 2., -9., 9., -hugeval, hugeval)
         self.foldE = Parameter(name, 'foldE', 100., 1., 1.e6, 0.0, hugeval, 'keV')
-        self.rel_refl = Parameter(name, 'rel_refl', 0., 0., 1.e6, 0.0, hugeval)
+        self.rel_refl = Parameter(name, 'rel_refl', 0., 0., 1.e6, -1.0, hugeval)
         self.redshift = Parameter(name, 'redshift', 0., 0., 10., 0.0, hugeval, frozen=True)
         self.abund = Parameter(name, 'abund', 1., 0.0, 1.e6, 0.0, hugeval, frozen=True)
         self.Fe_abund = Parameter(name, 'Fe_abund', 1., 0.0, 1.e6, 0.0, hugeval, frozen=True)
@@ -2222,6 +2222,346 @@ class XSzwndabs(XSMultiplicativeModel):
         self.WindowE = Parameter(name, 'WindowE', 1., .05, 20., 0.0, hugeval, 'keV')
         self.redshift = Parameter(name, 'redshift', 0., 0., 10., 0.0, hugeval, frozen=True)
         XSMultiplicativeModel.__init__(self, name, (self.nH, self.WindowE, self.redshift))
+
+
+### New additive and multiplicative models, as of XSPEC 12.7
+
+
+class XScplinear(XSAdditiveModel):
+
+    calc = _xspec.C_cplinear
+
+    def __init__(self, name='cplinear'):
+        self.energy00 = Parameter(name, 'energy00', 0.5, units='keV', alwaysfrozen=True)
+        self.energy01 = Parameter(name, 'energy01', 1., units='keV', alwaysfrozen=True)
+        self.energy02 = Parameter(name, 'energy02', 1.5, units='keV', alwaysfrozen=True)
+        self.energy03 = Parameter(name, 'energy03', 2., units='keV', alwaysfrozen=True)
+        self.energy04 = Parameter(name, 'energy04', 3., units='keV', alwaysfrozen=True)
+        self.energy05 = Parameter(name, 'energy05', 4., units='keV', alwaysfrozen=True)
+        self.energy06 = Parameter(name, 'energy06', 5., units='keV', alwaysfrozen=True)
+        self.energy07 = Parameter(name, 'energy07', 6., units='keV', alwaysfrozen=True)
+        self.energy08 = Parameter(name, 'energy08', 7., units='keV', alwaysfrozen=True)
+        self.energy09 = Parameter(name, 'energy09', 8., units='keV', alwaysfrozen=True)
+        self.log_rate00 = Parameter(name, 'log_rate00', 0., -19.0, 19.0, -hugeval, hugeval, frozen=True)
+        self.log_rate01 = Parameter(name, 'log_rate01', 1., -19.0, 19.0, -hugeval, hugeval, frozen=True)
+        self.log_rate02 = Parameter(name, 'log_rate02', 0., -19.0, 19.0, -hugeval, hugeval, frozen=True)
+        self.log_rate03 = Parameter(name, 'log_rate03', 1., -19.0, 19.0, -hugeval, hugeval, frozen=True)
+        self.log_rate04 = Parameter(name, 'log_rate04', 0., -19.0, 19.0, -hugeval, hugeval, frozen=True)
+        self.log_rate05 = Parameter(name, 'log_rate05', 1., -19.0, 19.0, -hugeval, hugeval, frozen=True)
+        self.log_rate06 = Parameter(name, 'log_rate06', 0., -19.0, 19.0, -hugeval, hugeval, frozen=True)
+        self.log_rate07 = Parameter(name, 'log_rate07', 1., -19.0, 19.0, -hugeval, hugeval, frozen=True)
+        self.log_rate08 = Parameter(name, 'log_rate08', 0., -19.0, 19.0, -hugeval, hugeval, frozen=True)
+        self.log_rate09 = Parameter(name, 'log_rate09', 1., -19.0, 19.0, -hugeval, hugeval, frozen=True)
+        self.norm = Parameter(name, 'norm', 1.0, 0.0, 1.0e24, 0.0, hugeval)
+        XSAdditiveModel.__init__(self, name, (self.energy00, self.energy01, self.energy02, self.energy03, self.energy04, self.energy05, self.energy06, self.energy07, self.energy08, self.energy09, self.log_rate00, self.log_rate01, self.log_rate02, self.log_rate03, self.log_rate04, self.log_rate05, self.log_rate06, self.log_rate07, self.log_rate08, self.log_rate09, self.norm))
+
+
+class XSeqpair(XSAdditiveModel):
+
+    calc = _xspec.xseqpair
+
+    def __init__(self, name='eqpair'):
+        self.l_hl_s = Parameter(name, 'l_hl_s', 1., 1e-6, 1.e6, 0.0, hugeval)
+        self.l_bb = Parameter(name, 'l_bb', 100., 0., 1.e4, 0.0, hugeval)
+        self.kT_bb = Parameter(name, 'kT_bb', 200., 1., 4e5, 0.0, hugeval, 'eV', True)
+        self.l_ntl_h = Parameter(name, 'l_ntl_h', 0.5, 0., 0.9999, 0.0, hugeval)
+        self.tau_p = Parameter(name, 'tau_p', 1e-4, 1e-4, 10., 0.0, hugeval, frozen=True)
+        self.radius = Parameter(name, 'radius', 1.e7, 1.e5, 1.e16, 0.0, hugeval, 'cm', True)
+        self.g_min = Parameter(name, 'g_min', 1.3, 1.2, 1.e3, 0.0, hugeval, frozen=True)
+        self.g_max = Parameter(name, 'g_max', 1.e3, 5., 1.e4, 0.0, hugeval, frozen=True)
+        self.G_inj = Parameter(name, 'G_inj', 2., 0., 5., 0.0, hugeval, frozen=True)
+        self.pairinj = Parameter(name, 'pairinj', 0., 0., 1., 0.0, hugeval, frozen=True)
+        self.cosIncl = Parameter(name, 'cosIncl', 0.50, 0.05, 0.95, 0.0, hugeval, frozen=True)
+        self.Refl = Parameter(name, 'Refl', 1., 0., 2., 0.0, hugeval, frozen=True)
+        self.Fe_abund = Parameter(name, 'Fe_abund', 1., 0.1, 10., 0.0, hugeval, frozen=True)
+        self.AbHe = Parameter(name, 'AbHe', 1.0, 0.1, 10., 0.0, hugeval, frozen=True)
+        self.T_disk = Parameter(name, 'T_disk', 1.e6, 1e4, 1e6, 0.0, hugeval, 'K', True)
+        self.xi = Parameter(name, 'xi', 0.0, 0.0, 1000.0, 0.0, hugeval)
+        self.Beta = Parameter(name, 'Beta', -10., -10., 10., -hugeval, hugeval, frozen=True)
+        self.Rin = Parameter(name, 'Rin', 10., 6.001, 1.e3, 0.0, hugeval, 'M', True)
+        self.Rout = Parameter(name, 'Rout', 1.e3, 0., 1.e6, 0.0, hugeval, 'M', True)
+        self.redshift = Parameter(name, 'redshift', 0., 0., 4., 0.0, hugeval, frozen=True)
+        self.norm = Parameter(name, 'norm', 1.0, 0.0, 1.0e24, 0.0, hugeval)
+        XSAdditiveModel.__init__(self, name, (self.l_hl_s, self.l_bb, self.kT_bb, self.l_ntl_h, self.tau_p, self.radius, self.g_min, self.g_max, self.G_inj, self.pairinj, self.cosIncl, self.Refl, self.Fe_abund, self.AbHe, self.T_disk, self.xi, self.Beta, self.Rin, self.Rout, self.redshift, self.norm))
+
+
+class XSeqtherm(XSAdditiveModel):
+
+    calc = _xspec.xseqth
+
+    def __init__(self, name='eqtherm'):
+        self.l_hl_s = Parameter(name, 'l_hl_s', 1., 1e-6, 1.e6, 0.0, hugeval)
+        self.l_bb = Parameter(name, 'l_bb', 100., 0., 1.e4, 0.0, hugeval)
+        self.kT_bb = Parameter(name, 'kT_bb', 200., 1., 4e5, 0.0, hugeval, 'eV', True)
+        self.l_ntl_h = Parameter(name, 'l_ntl_h', 0.5, 0., 0.9999, 0.0, hugeval)
+        self.tau_p = Parameter(name, 'tau_p', 1e-4, 1e-4, 10., 0.0, hugeval, frozen=True)
+        self.radius = Parameter(name, 'radius', 1.e7, 1.e5, 1.e16, 0.0, hugeval, 'cm', True)
+        self.g_min = Parameter(name, 'g_min', 1.3, 1.2, 1.e3, 0.0, hugeval, frozen=True)
+        self.g_max = Parameter(name, 'g_max', 1.e3, 5., 1.e4, 0.0, hugeval, frozen=True)
+        self.G_inj = Parameter(name, 'G_inj', 2., 0., 5., 0.0, hugeval, frozen=True)
+        self.pairinj = Parameter(name, 'pairinj', 0., 0., 1., 0.0, hugeval, frozen=True)
+        self.cosIncl = Parameter(name, 'cosIncl', 0.50, 0.05, 0.95, 0.0, hugeval, frozen=True)
+        self.Refl = Parameter(name, 'Refl', 1., 0., 2., 0.0, hugeval, frozen=True)
+        self.Fe_abund = Parameter(name, 'Fe_abund', 1., 0.1, 10., 0.0, hugeval, frozen=True)
+        self.AbHe = Parameter(name, 'AbHe', 1.0, 0.1, 10., 0.0, hugeval, frozen=True)
+        self.T_disk = Parameter(name, 'T_disk', 1.e6, 1e4, 1e6, 0.0, hugeval, 'K', True)
+        self.xi = Parameter(name, 'xi', 0.0, 0.0, 1000.0, 0.0, hugeval)
+        self.Beta = Parameter(name, 'Beta', -10., -10., 10., -hugeval, hugeval, frozen=True)
+        self.Rin = Parameter(name, 'Rin', 10., 6.001, 1.e3, 0.0, hugeval, 'M', True)
+        self.Rout = Parameter(name, 'Rout', 1.e3, 0., 1.e6, 0.0, hugeval, 'M', True)
+        self.redshift = Parameter(name, 'redshift', 0., 0., 4., 0.0, hugeval, frozen=True)
+        self.norm = Parameter(name, 'norm', 1.0, 0.0, 1.0e24, 0.0, hugeval)
+        XSAdditiveModel.__init__(self, name, (self.l_hl_s, self.l_bb, self.kT_bb, self.l_ntl_h, self.tau_p, self.radius, self.g_min, self.g_max, self.G_inj, self.pairinj, self.cosIncl, self.Refl, self.Fe_abund, self.AbHe, self.T_disk, self.xi, self.Beta, self.Rin, self.Rout, self.redshift, self.norm))
+
+
+class XScompth(XSAdditiveModel):
+
+    calc = _xspec.xscompth
+
+    def __init__(self, name='compth'):
+        self.theta = Parameter(name, 'theta', 1., 1e-6, 1.e6, 0.0, hugeval, 'keV')
+        self.showbb = Parameter(name, 'showbb', 1.0, 0., 1.e4, 0.0, hugeval, frozen=True)
+        self.kT_bb = Parameter(name, 'kT_bb', 200., 1., 4e5, 0.0, hugeval, 'eV', True)
+        self.RefOn = Parameter(name, 'RefOn', -1.0, -2.0, 2.0, -hugeval, hugeval, frozen=True)
+        self.tau_p = Parameter(name, 'tau_p', 1e-4, 1e-4, 10., 0.0, hugeval, frozen=True)
+        self.radius = Parameter(name, 'radius', 1.e7, 1.e5, 1.e16, 0.0, hugeval, 'cm', True)
+        self.g_min = Parameter(name, 'g_min', 1.3, 1.2, 1.e3, 0.0, hugeval, frozen=True)
+        self.g_max = Parameter(name, 'g_max', 1.e3, 5., 1.e4, 0.0, hugeval, frozen=True)
+        self.G_inj = Parameter(name, 'G_inj', 2., 0., 5., 0.0, hugeval, frozen=True)
+        self.pairinj = Parameter(name, 'pairinj', 0., 0., 1., 0.0, hugeval, frozen=True)
+        self.cosIncl = Parameter(name, 'cosIncl', 0.50, 0.05, 0.95, 0.0, hugeval, frozen=True)
+        self.Refl = Parameter(name, 'Refl', 1., 0., 2., 0.0, hugeval, frozen=True)
+        self.Fe_abund = Parameter(name, 'Fe_abund', 1., 0.1, 10., 0.0, hugeval, frozen=True)
+        self.AbHe = Parameter(name, 'AbHe', 1.0, 0.1, 10., 0.0, hugeval, frozen=True)
+        self.T_disk = Parameter(name, 'T_disk', 1.e6, 1e4, 1e6, 0.0, hugeval, 'K', True)
+        self.xi = Parameter(name, 'xi', 0.0, 0.0, 1000.0, 0.0, hugeval)
+        self.Beta = Parameter(name, 'Beta', -10., -10., 10., -hugeval, hugeval, frozen=True)
+        self.Rin = Parameter(name, 'Rin', 10., 6.001, 1.e3, 0.0, hugeval, 'M', True)
+        self.Rout = Parameter(name, 'Rout', 1.e3, 0., 1.e6, 0.0, hugeval, 'M', True)
+        self.redshift = Parameter(name, 'redshift', 0., 0., 4., 0.0, hugeval, frozen=True)
+        self.norm = Parameter(name, 'norm', 1.0, 0.0, 1.0e24, 0.0, hugeval)
+        XSAdditiveModel.__init__(self, name, (self.theta, self.showbb, self.kT_bb, self.RefOn, self.tau_p, self.radius, self.g_min, self.g_max, self.G_inj, self.pairinj, self.cosIncl, self.Refl, self.Fe_abund, self.AbHe, self.T_disk, self.xi, self.Beta, self.Rin, self.Rout, self.redshift, self.norm))
+
+
+class XSbvvapec(XSAdditiveModel):
+
+    calc = _xspec.xsbvvp
+
+    def __init__(self, name='bvvapec'):
+        self.kT = Parameter(name, 'kT', 6.5, 0.0808, 68.447, 0.0, hugeval, 'keV')
+        self.H = Parameter(name, 'H', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.He = Parameter(name, 'He', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.Li = Parameter(name, 'Li', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.Be = Parameter(name, 'Be', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.B = Parameter(name, 'B', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.C = Parameter(name, 'C', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.N = Parameter(name, 'N', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.O = Parameter(name, 'O', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.F = Parameter(name, 'F', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.Ne = Parameter(name, 'Ne', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.Na = Parameter(name, 'Na', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.Mg = Parameter(name, 'Mg', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.Al = Parameter(name, 'Al', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.Si = Parameter(name, 'Si', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.P = Parameter(name, 'P', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.S = Parameter(name, 'S', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.Cl = Parameter(name, 'Cl', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.Ar = Parameter(name, 'Ar', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.K = Parameter(name, 'K', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.Ca = Parameter(name, 'Ca', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.Sc = Parameter(name, 'Sc', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.Ti = Parameter(name, 'Ti', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.V = Parameter(name, 'V', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.Cr = Parameter(name, 'Cr', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.Mn = Parameter(name, 'Mn', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.Fe = Parameter(name, 'Fe', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.Co = Parameter(name, 'Co', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.Ni = Parameter(name, 'Ni', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.Cu = Parameter(name, 'Cu', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.Zn = Parameter(name, 'Zn', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.Redshift = Parameter(name, 'Redshift', 0., -0.999, 10., -hugeval, hugeval, frozen=True)
+        self.Velocity = Parameter(name, 'Velocity', 0., 0., 1.e6, 0.0, hugeval, 'km/s', True)
+        self.norm = Parameter(name, 'norm', 1.0, 0.0, 1.0e24, 0.0, hugeval)
+        XSAdditiveModel.__init__(self, name, (self.kT, self.H, self.He, self.Li, self.Be, self.B, self.C, self.N, self.O, self.F, self.Ne, self.Na, self.Mg, self.Al, self.Si, self.P, self.S, self.Cl, self.Ar, self.K, self.Ca, self.Sc, self.Ti, self.V, self.Cr, self.Mn, self.Fe, self.Co, self.Ni, self.Cu, self.Zn, self.Redshift, self.Velocity, self.norm))
+
+
+class XSvvapec(XSAdditiveModel):
+
+    calc = _xspec.xsvvap
+
+    def __init__(self, name='vvapec'):
+        self.kT = Parameter(name, 'kT', 6.5, 0.0808, 68.447, 0.0, hugeval, 'keV')
+        self.H = Parameter(name, 'H', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.He = Parameter(name, 'He', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.Li = Parameter(name, 'Li', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.Be = Parameter(name, 'Be', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.B = Parameter(name, 'B', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.C = Parameter(name, 'C', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.N = Parameter(name, 'N', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.O = Parameter(name, 'O', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.F = Parameter(name, 'F', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.Ne = Parameter(name, 'Ne', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.Na = Parameter(name, 'Na', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.Mg = Parameter(name, 'Mg', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.Al = Parameter(name, 'Al', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.Si = Parameter(name, 'Si', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.P = Parameter(name, 'P', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.S = Parameter(name, 'S', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.Cl = Parameter(name, 'Cl', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.Ar = Parameter(name, 'Ar', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.K = Parameter(name, 'K', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.Ca = Parameter(name, 'Ca', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.Sc = Parameter(name, 'Sc', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.Ti = Parameter(name, 'Ti', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.V = Parameter(name, 'V', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.Cr = Parameter(name, 'Cr', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.Mn = Parameter(name, 'Mn', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.Fe = Parameter(name, 'Fe', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.Co = Parameter(name, 'Co', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.Ni = Parameter(name, 'Ni', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.Cu = Parameter(name, 'Cu', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.Zn = Parameter(name, 'Zn', 1., 0., 1000., 0.0, hugeval, frozen=True)
+        self.Redshift = Parameter(name, 'Redshift', 0., -0.999, 10., -hugeval, hugeval, frozen=True)
+        self.norm = Parameter(name, 'norm', 1.0, 0.0, 1.0e24, 0.0, hugeval)
+        XSAdditiveModel.__init__(self, name, (self.kT, self.H, self.He, self.Li, self.Be, self.B, self.C, self.N, self.O, self.F, self.Ne, self.Na, self.Mg, self.Al, self.Si, self.P, self.S, self.Cl, self.Ar, self.K, self.Ca, self.Sc, self.Ti, self.V, self.Cr, self.Mn, self.Fe, self.Co, self.Ni, self.Cu, self.Zn, self.Redshift, self.norm))
+
+
+class XSzigm(XSMultiplicativeModel):
+
+    calc = _xspec.zigm
+
+    def __init__(self, name='zigm'):
+        self.redshift = Parameter(name, 'redshift', 0.0, alwaysfrozen=True)
+        self.model = Parameter(name, 'model', 0, 0, 1, 0, 1, alwaysfrozen=True)
+        self.lyman_limit = Parameter(name, 'lyman_limit', 1, 0, 1, 0, 1, alwaysfrozen=True)
+        XSMultiplicativeModel.__init__(self, name, (self.redshift, self.model, self.lyman_limit))
+
+
+## Here are the seven new additive models from XSPEC 12.7.1
+
+
+class XSgadem(XSAdditiveModel):
+
+    calc = _xspec.C_gaussDem
+
+    def __init__(self, name='gadem'):
+        self.Tmean = Parameter(name, 'Tmean', 4.0, 0.01, 10, 0.0, hugeval, 'keV', True)
+        self.Tsigma = Parameter(name, 'Tsigma', 0.1, 0.01, 1.e2, 0.0, hugeval, 'keV')
+        self.nH = Parameter(name, 'nH', 1.0, 1.e-5, 1.e19, 0.0, hugeval, 'cm^-3', True)
+        self.abundanc = Parameter(name, 'abundanc', 1.0, 0., 10., 0.0, hugeval, frozen=True)
+        self.Redshift = Parameter(name, 'Redshift', 0., -0.999, 10., -hugeval, hugeval, frozen=True)
+        self.switch = Parameter(name, 'switch', 2, 0, 2, 0, 2, alwaysfrozen=True)
+        self.norm = Parameter(name, 'norm', 1.0, 0.0, 1.0e24, 0.0, hugeval)
+        XSAdditiveModel.__init__(self, name, (self.Tmean, self.Tsigma, self.nH, self.abundanc, self.Redshift, self.switch, self.norm))
+
+
+class XSvgadem(XSAdditiveModel):
+
+    calc = _xspec.C_vgaussDem
+
+    def __init__(self, name='vgadem'):
+        self.Tmean = Parameter(name, 'Tmean', 4.0, 0.01, 10, 0.0, hugeval, 'keV', True)
+        self.Tsigma = Parameter(name, 'Tsigma', 0.1, 0.01, 1.e2, 0.0, hugeval, 'keV')
+        self.nH = Parameter(name, 'nH', 1.0, 1.e-5, 1.e19, 0.0, hugeval, 'cm^-3', True)
+        self.He = Parameter(name, 'He', 1.0, 0., 10., 0.0, hugeval, frozen=True)
+        self.C = Parameter(name, 'C', 1.0, 0., 10., 0.0, hugeval, frozen=True)
+        self.N = Parameter(name, 'N', 1.0, 0., 10., 0.0, hugeval, frozen=True)
+        self.O = Parameter(name, 'O', 1.0, 0., 10., 0.0, hugeval, frozen=True)
+        self.Ne = Parameter(name, 'Ne', 1.0, 0., 10., 0.0, hugeval, frozen=True)
+        self.Na = Parameter(name, 'Na', 1.0, 0., 10., 0.0, hugeval, frozen=True)
+        self.Mg = Parameter(name, 'Mg', 1.0, 0., 10., 0.0, hugeval, frozen=True)
+        self.Al = Parameter(name, 'Al', 1.0, 0., 10., 0.0, hugeval, frozen=True)
+        self.Si = Parameter(name, 'Si', 1.0, 0., 10., 0.0, hugeval, frozen=True)
+        self.S = Parameter(name, 'S', 1.0, 0., 10., 0.0, hugeval, frozen=True)
+        self.Ar = Parameter(name, 'Ar', 1.0, 0., 10., 0.0, hugeval, frozen=True)
+        self.Ca = Parameter(name, 'Ca', 1.0, 0., 10., 0.0, hugeval, frozen=True)
+        self.Fe = Parameter(name, 'Fe', 1.0, 0., 10., 0.0, hugeval, frozen=True)
+        self.Ni = Parameter(name, 'Ni', 1.0, 0., 10., 0.0, hugeval, frozen=True)
+        self.Redshift = Parameter(name, 'Redshift', 0., -0.999, 10., -hugeval, hugeval, frozen=True)
+        self.switch = Parameter(name, 'switch', 2, 0, 2, 0, 2, alwaysfrozen=True)
+        self.norm = Parameter(name, 'norm', 1.0, 0.0, 1.0e24, 0.0, hugeval)
+        XSAdditiveModel.__init__(self, name, (self.Tmean, self.Tsigma, self.nH, self.He, self.C, self.N, self.O, self.Ne, self.Na, self.Mg, self.Al, self.Si, self.S, self.Ar, self.Ca, self.Fe, self.Ni, self.Redshift, self.switch, self.norm))
+
+
+class XSeplogpar(XSAdditiveModel):
+
+    calc = _xspec.eplogpar
+
+    def __init__(self, name='eplogpar'):
+        self.Ep = Parameter(name, 'Ep', .1, 1.e-6, 1.e2, 0.0, hugeval, 'keV')
+        self.beta = Parameter(name, 'beta', 0.2, -4., 4., -hugeval, hugeval)
+        self.norm = Parameter(name, 'norm', 1.0, 0.0, 1.0e24, 0.0, hugeval)
+        XSAdditiveModel.__init__(self, name, (self.Ep, self.beta, self.norm))
+
+
+class XSlogpar(XSAdditiveModel):
+
+    calc = _xspec.logpar
+
+    def __init__(self, name='logpar'):
+        self.alpha = Parameter(name, 'alpha', 1.5, 0., 4., 0.0, hugeval)
+        self.beta = Parameter(name, 'beta', 0.2, -4., 4., -hugeval, hugeval)
+        self.pivotE = Parameter(name, 'pivotE', 1.0, units='keV', alwaysfrozen=True)
+        self.norm = Parameter(name, 'norm', 1.0, 0.0, 1.0e24, 0.0, hugeval)
+        XSAdditiveModel.__init__(self, name, (self.alpha, self.beta, self.pivotE, self.norm))
+
+
+class XSoptxagn(XSAdditiveModel):
+
+    calc = _xspec.optxagn
+
+    def __init__(self, name='optxagn'):
+        self.mass = Parameter(name, 'mass', 1e7, 1.0, 1.e9, 0.0, hugeval, 'solar', True)
+        self.dist = Parameter(name, 'dist', 100, 0.01, 1.e9, 0.0, hugeval, 'Mpc', True)
+        self.logLLEdd = Parameter(name, 'logLLEdd', -1., -10., 2, -hugeval, hugeval)
+        self.astar = Parameter(name, 'astar', 0.0, 0., 0.998, 0.0, hugeval, frozen=True)
+        self.rcor = Parameter(name, 'rcor', 10.0, 1., 100., 0.0, hugeval, 'rg')
+        self.logrout = Parameter(name, 'logrout', 5.0, 3.0, 7.0, 0.0, hugeval, frozen=True)
+        self.kT_e = Parameter(name, 'kT_e', 0.2, 0.01, 10, 0.0, hugeval, 'keV')
+        self.tau = Parameter(name, 'tau', 10., 0.1, 100, 0.0, hugeval)
+        self.Gamma = Parameter(name, 'Gamma', 2.1, 0.5, 5., 0.0, hugeval)
+        self.fpl = Parameter(name, 'fpl', 1.e-4, 0.0, 1.e-1, 0.0, hugeval)
+        self.fcol = Parameter(name, 'fcol', 2.4, 1.0, 5, 0.0, hugeval, frozen=True)
+        self.tscat = Parameter(name, 'tscat', 1.e5, 1e4, 1e5, 0.0, hugeval, frozen=True)
+        self.Redshift = Parameter(name, 'Redshift', 0., 0., 10., 0.0, hugeval, frozen=True)
+        self.norm = Parameter(name, 'norm', 1.0, 0.0, 1.0e24, 0.0, hugeval, frozen=True)
+        XSAdditiveModel.__init__(self, name, (self.mass, self.dist, self.logLLEdd, self.astar, self.rcor, self.logrout, self.kT_e, self.tau, self.Gamma, self.fpl, self.fcol, self.tscat, self.Redshift, self.norm))
+
+
+class XSoptxagnf(XSAdditiveModel):
+
+    calc = _xspec.optxagnf
+
+    def __init__(self, name='optxagnf'):
+        self.mass = Parameter(name, 'mass', 1e7, 1.0, 1.e9, 0.0, hugeval, 'solar', True)
+        self.dist = Parameter(name, 'dist', 100, 0.01, 1.e9, 0.0, hugeval, 'Mpc', True)
+        self.logLLEdd = Parameter(name, 'logLLEdd', -1., -10., 2, -hugeval, hugeval)
+        self.astar = Parameter(name, 'astar', 0.0, 0., 0.998, 0.0, hugeval, frozen=True)
+        self.rcor = Parameter(name, 'rcor', 10.0, 1., 100., 0.0, hugeval, 'rg')
+        self.logrout = Parameter(name, 'logrout', 5.0, 3.0, 7.0, 0.0, hugeval, frozen=True)
+        self.kT_e = Parameter(name, 'kT_e', 0.2, 0.01, 10, 0.0, hugeval, 'keV')
+        self.tau = Parameter(name, 'tau', 10., 0.1, 100, 0.0, hugeval)
+        self.Gamma = Parameter(name, 'Gamma', 2.1, 0.5, 5., 0.0, hugeval)
+        self.fpl = Parameter(name, 'fpl', 1.e-4, 0.0, 1., 0.0, hugeval)
+        self.Redshift = Parameter(name, 'Redshift', 0., 0., 10., 0.0, hugeval, frozen=True)
+        self.norm = Parameter(name, 'norm', 1.0, 0.0, 1.0e24, 0.0, hugeval, frozen=True)
+        XSAdditiveModel.__init__(self, name, (self.mass, self.dist, self.logLLEdd, self.astar, self.rcor, self.logrout, self.kT_e, self.tau, self.Gamma, self.fpl, self.Redshift, self.norm))
+
+
+class XSpexmon(XSAdditiveModel):
+
+    calc = _xspec.pexmon
+
+    def __init__(self, name='pexmon'):
+        self.PhoIndex = Parameter(name, 'PhoIndex', 2., 1.1, 2.5, 0.0, hugeval)
+        self.foldE = Parameter(name, 'foldE', 1000., 1., 1.e6, 0.0, hugeval, 'keV', True)
+        self.rel_refl = Parameter(name, 'rel_refl', -1, -1.e6, 1.e6, -hugeval, hugeval, frozen=True)
+        self.redshift = Parameter(name, 'redshift', 0., 0., 4., 0.0, hugeval, frozen=True)
+        self.abund = Parameter(name, 'abund', 1., 0.0, 1.e6, 0.0, hugeval, frozen=True)
+        self.Fe_abund = Parameter(name, 'Fe_abund', 1., 0.0, 100., 0.0, hugeval, frozen=True)
+        self.Incl = Parameter(name, 'Incl', 60., 0., 85.0, 0.0, hugeval, 'deg')
+        self.norm = Parameter(name, 'norm', 1.0, 0.0, 1.0e24, 0.0, hugeval)
+        XSAdditiveModel.__init__(self, name, (self.PhoIndex, self.foldE, self.rel_refl, self.redshift, self.abund, self.Fe_abund, self.Incl, self.norm))
 
 
 # Add model classes to __all__

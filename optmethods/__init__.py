@@ -4,7 +4,7 @@
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
-#  the Free Software Foundation; either version 2 of the License, or
+#  the Free Software Foundation; either version 3 of the License, or
 #  (at your option) any later version.
 #
 #  This program is distributed in the hope that it will be useful,
@@ -27,7 +27,7 @@ from sherpa.optmethods.optfcts import *
 warning = logging.getLogger(__name__).warning
 
 
-__all__ = ('OptMethod', 'LevMar', 'MonCar', 'NelderMead')
+__all__ = ('GridSearch', 'OptMethod', 'LevMar', 'MonCar', 'NelderMead')
 
 
 class OptMethod(NoNewAttributesAfterInit):
@@ -109,6 +109,13 @@ class OptMethod(NoNewAttributesAfterInit):
 
 	return output
 
+class GridSearch(OptMethod):
+    """A simple iterative method to support the template model interface,
+    the method can be used for non-template model but it is very ineffecient
+    for this purpose."""
+    
+    def __init__(self, name='gridsearch'):
+	OptMethod.__init__(self, name, grid_search)
 
 class LevMar(OptMethod):
     """
@@ -324,7 +331,7 @@ class NelderMead(OptMethod):
 ##     return tuple( fubar )
 
 ## __all__ = myall( __all__, 'Bobyqa' )
-## __all__ = myall( __all__, 'cLevMar' )
+## __all__ = myall( __all__, 'cppLevMar' )
 ## __all__ = myall( __all__, 'Dif_Evo' )
 ## __all__ = myall( __all__, 'MarLev' )
 ## __all__ = myall( __all__, 'MyMinim' )
@@ -340,10 +347,10 @@ class NelderMead(OptMethod):
 ##     def __init__(self, name='bobyqa'):
 ##         OptMethod.__init__(self, name, myoptfcts.bobyqa)
 
-## class cLevMar(OptMethod):
+## class cppLevMar(OptMethod):
 
 ##    def __init__(self, name='clevmar'):
-## 	OptMethod.__init__(self, name, optfcts.lmdifc)
+## 	OptMethod.__init__(self, name, optfcts.lmdif_cpp)
     
 ## class Dif_Evo(OptMethod):
 ##     def __init__(self, name='dif_evo'):

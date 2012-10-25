@@ -4,7 +4,7 @@
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
-#  the Free Software Foundation; either version 2 of the License, or
+#  the Free Software Foundation; either version 3 of the License, or
 #  (at your option) any later version.
 #
 #  This program is distributed in the hope that it will be useful,
@@ -418,6 +418,16 @@ class DataND(Data):
         if filter:
             y = self.apply_filter(y)
         return y
+
+    def set_dep(self, val):
+        "Set the dependent variable values"
+        dep = None
+        if numpy.iterable(val):
+            dep = numpy.asarray(val, SherpaFloat)
+        else:
+            val = SherpaFloat(val)
+            dep = numpy.array([val]*len(self.get_indep()[0]))
+        setattr(self, 'y', dep)
 
 
 class Data1D(DataND):
